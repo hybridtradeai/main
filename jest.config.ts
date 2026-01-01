@@ -7,6 +7,14 @@ const config: Config = {
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
   moduleNameMapper: {
     '^@lib/(.*)$': '<rootDir>/src/lib/$1',
+    '^@/(.*)$': '<rootDir>/$1',
+  },
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: {
+        jsx: 'react-jsx',
+      },
+    }],
   },
 }
 
