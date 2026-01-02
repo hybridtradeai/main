@@ -1,47 +1,43 @@
-import { supabaseServer, supabaseServiceReady } from './supabaseServer'
+import { NextRequest } from 'next/server'
+import { supabaseServer } from './supabaseServer'
+import { headers } from 'next/headers'
 
-export type Role = 'USER' | 'ADMIN'
-
-export async function requireRole(
-  required: Role,
-  req?: Request
-): Promise<{ user: any | null; error: 'unauthenticated' | 'forbidden' | null }> {
-  try {
-    let token = ''
-    
-    if (req) {
-      const authHeader = req.headers.get('authorization')
-      token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
+export async function requireRole(role: 'USER' | 'ADMIN', req?: NextRequest) {
+  let token = ''
+  
+  if (req) {
+    const auth = req.headers.get('Authorization') || ''
+    token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
+  } else {
+    // Fallback to next/headers if req is not provided
+    try {
+        const headerList = headers()
+        const auth = headerList.get('Authorization') || ''
+        token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
+    } catch (e) {
+        // headers() might fail if not in a request context (e.g. static generation)
+        return { user: null, error: 'unauthenticated' }
     }
-    
-    if (!token) {
-      return { user: null, error: 'unauthenticated' }
-    }
-    
-    const { data, error } = await supabaseServer.auth.getUser(token)
-    if (error || !data?.user) {
-      return { user: null, error: 'unauthenticated' }
-    }
-    
-    const user = data.user as any
-    
-    if (required === 'ADMIN') {
-      const { data: profile } = await supabaseServer
-        .from('profiles')
-        .select('role,is_admin')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      
-      const role = String(profile?.role || '').toLowerCase()
-      const isAdmin = Boolean(profile?.is_admin) || role === 'admin'
-      
-      if (!isAdmin) {
-        return { user: null, error: 'forbidden' }
-      }
-    }
-    
-    return { user, error: null }
-  } catch {
-    return { user: null, error: 'unauthenticated' }
   }
+  
+  if (!token) return { user: null, error: 'unauthenticated' }
+  
+  const { data: { user }, error: userErr } = await supabaseServer.auth.getUser(token)
+  
+  if (userErr || !user) return { user: null, error: 'unauthenticated' }
+  
+  if (role === 'ADMIN') {
+    const { data: profile } = await supabaseServer
+      .from('profiles')
+      .select('role,is_admin')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      
+    const userRole = String(profile?.role || '').toLowerCase()
+    const isAdmin = Boolean(profile?.is_admin) || userRole === 'admin'
+    
+    if (!isAdmin) return { user: null, error: 'forbidden' }
+  }
+  
+  return { user, error: null }
 }
