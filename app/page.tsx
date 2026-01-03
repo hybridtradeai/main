@@ -1,5 +1,4 @@
 import React from 'react'
-import Head from 'next/head'
 import LandingNavbar from '@/components/landing/LandingNavbar'
 import HeroSection from '@/components/landing/HeroSection'
 import StatsSection from '@/components/landing/StatsSection'
@@ -9,13 +8,14 @@ import CTASection from '@/components/landing/CTASection'
 import LiveDemoSection from '@/components/landing/LiveDemoSection'
 import StoryLine from '@/components/ui/StoryLine'
 
+export const metadata = {
+  title: 'HybridTradeAI – Modern Fintech Investing',
+  description: 'AI-assisted signals, weekly ROI tracking, and secure withdrawals. Start investing with HybridTradeAI.',
+}
+
 export default function Home() {
   return (
     <>
-      <Head>
-        <title>HybridTradeAI – Modern Fintech Investing</title>
-        <meta name="description" content="AI-assisted signals, weekly ROI tracking, and secure withdrawals. Start investing with HybridTradeAI." />
-      </Head>
       <main className="min-h-screen bg-[#050A18] text-white relative">
         <StoryLine />
         <LandingNavbar />
