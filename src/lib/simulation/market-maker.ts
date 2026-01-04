@@ -101,16 +101,19 @@ export class MarketMaker {
     }
     
     // Batch insert
-    const { error } = await supabaseServer.from('TradeLog').insert(trades)
-    
-    if (error) {
-      console.error('Failed to insert simulated trades:', error)
+    if (supabaseServer) {
+      const { error } = await supabaseServer.from('TradeLog').insert(trades)
+      
+      if (error) {
+        console.error('Failed to insert simulated trades:', error)
+      }
     }
     
     return trades
   }
   
   static async getRecentTrades(limit = 20) {
+    if (!supabaseServer) return []
     const { data, error } = await supabaseServer
       .from('TradeLog')
       .select('*')

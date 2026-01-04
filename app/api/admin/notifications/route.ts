@@ -1,15 +1,19 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
 
 export async function GET(req: NextRequest) {
   const { user, error } = await requireRole('ADMIN')
-  if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
   const url = new URL(req.url)
   const scope = String(url.searchParams.get('scope') || 'personal')
   const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') || '50')))
   const unreadOnly = url.searchParams.get('unreadOnly') === 'true'
   const type = url.searchParams.get('type')
+
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
 
   if (scope === 'global') {
     // Try PascalCase

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -6,7 +8,7 @@ import crypto from 'crypto'
 
 export async function POST(req: NextRequest) {
   const { user, error } = await requireRole('ADMIN', req)
-  if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
   const adminId = String(user.id)
 
   const body = await req.json()
@@ -18,6 +20,8 @@ export async function POST(req: NextRequest) {
   if (!userId || !amount || Number.isNaN(amount) || amount <= 0) {
     return new Response(JSON.stringify({ error: 'invalid' }), { status: 400 })
   }
+
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
 
   try {
     const now = new Date().toISOString()

@@ -8,6 +8,9 @@ import crypto from 'crypto'
 const PatchSchema = z.object({ id: z.string().min(1), status: z.enum(['confirmed', 'rejected']) })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   if (req.method === 'GET') {
     const admin = await requireAdmin(req)
     if (!admin.ok) return res.status(401).json({ error: admin.error || 'unauthorized' })
@@ -26,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
       // Try PascalCase first
-      let q = supabaseServer
+      let q = supabase
         .from('Transaction')
         .select('*', { count: 'exact' })
         .order('createdAt', { ascending: false })
@@ -48,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       if (result.error && (result.error.message.includes('relation "public.Transaction" does not exist') || result.error.code === '42P01')) {
           // Fallback to lowercase 'transactions'
-          let q2 = supabaseServer
+          let q2 = supabase
             .from('transactions')
             .select('*', { count: 'exact' })
             .order('created_at', { ascending: false })
@@ -85,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let map: Record<string, string> = {}
       if (ids.length) {
         // Try PascalCase User
-        const { data: users, error: userErr } = await supabaseServer
+        const { data: users, error: userErr } = await supabase
           .from('User')
           .select('id,email')
           .in('id', ids)
@@ -94,7 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         if (userErr && (userErr.message.includes('relation "public.User" does not exist') || userErr.code === '42P01')) {
              // Fallback to lowercase 'users'
-             const { data: usersLower } = await supabaseServer
+             const { data: usersLower } = await supabase
                 .from('users')
                 .select('id,email')
                 .in('id', ids)
@@ -107,7 +110,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         } else {
             // Fallback to profiles if User table empty or missing (legacy)
-            const { data: prof } = await supabaseServer
+            const { data: prof } = await supabase
               .from('profiles')
               .select('user_id,email')
               .in('user_id', ids)
@@ -170,7 +173,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let error: any = null;
 
     // Try PascalCase
-    const res1 = await supabaseServer
+    const res1 = await supabase
       .from('Transaction')
       .select('*')
       .eq('id', id)
@@ -178,7 +181,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     if (res1.error && (res1.error.message.includes('relation "public.Transaction" does not exist') || res1.error.code === '42P01')) {
          // Fallback to lowercase
-         const res2 = await supabaseServer
+         const res2 = await supabase
             .from('transactions')
             .select('*')
             .eq('id', id)
@@ -220,11 +223,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (type === 'DEPOSIT') {
         let wallet: any = null
         // Try PascalCase Wallet
-        let wq = await supabaseServer.from('Wallet').select('id,balance').eq('userId', uid).eq('currency', curr).maybeSingle()
+        let wq = await supabase.from('Wallet').select('id,balance').eq('userId', uid).eq('currency', curr).maybeSingle()
         
         if (wq.error && (wq.error.message.includes('relation "public.Wallet" does not exist') || wq.error.code === '42P01')) {
             // Fallback to lowercase
-            const wq2 = await supabaseServer.from('wallets').select('id,balance').eq('user_id', uid).eq('currency', curr).maybeSingle()
+            const wq2 = await supabase.from('wallets').select('id,balance,user_id').eq('user_id', uid).eq('currency', curr).maybeSingle()
             if (wq2.data) {
                 wallet = { ...wq2.data, userId: wq2.data.user_id }
             }
@@ -237,11 +240,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         if (!walletId) {
           // Try create wallet PascalCase
-          const ins = await supabaseServer.from('Wallet').insert({ userId: uid, currency: curr, balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).select('id,balance').maybeSingle()
+          const ins = await supabase.from('Wallet').insert({ userId: uid, currency: curr, balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).select('id,balance').maybeSingle()
           
           if (ins.error && (ins.error.message.includes('relation "public.Wallet" does not exist') || ins.error.code === '42P01')) {
                // Fallback create lowercase
-               const ins2 = await supabaseServer.from('wallets').insert({ user_id: uid, currency: curr, balance: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('id,balance').maybeSingle()
+               const ins2 = await supabase.from('wallets').insert({ user_id: uid, currency: curr, balance: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('id,balance').maybeSingle()
                if (ins2.error || !ins2.data) return res.status(500).json({ error: 'wallet_create_failed' })
                walletId = String(ins2.data.id)
                currentAmount = Number(ins2.data.balance || 0)
@@ -255,9 +258,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const newAmount = Number((currentAmount + amt).toFixed(8))
         
         // Update Wallet Balance
-        const upd = await supabaseServer.from('Wallet').update({ balance: newAmount, updatedAt: new Date().toISOString() }).eq('id', walletId)
+        const upd = await supabase.from('Wallet').update({ balance: newAmount, updatedAt: new Date().toISOString() }).eq('id', walletId)
         if (upd.error && (upd.error.message.includes('relation "public.Wallet" does not exist') || upd.error.code === '42P01')) {
-             const upd2 = await supabaseServer.from('wallets').update({ balance: newAmount, updated_at: new Date().toISOString() }).eq('id', walletId)
+             const upd2 = await supabase.from('wallets').update({ balance: newAmount, updated_at: new Date().toISOString() }).eq('id', walletId)
              if (upd2.error) return res.status(500).json({ error: 'wallet_update_failed' })
         } else if (upd.error) {
              return res.status(500).json({ error: 'wallet_update_failed' })
@@ -277,9 +280,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 createdAt: new Date().toISOString()
             }
             
-            const wtIns = await supabaseServer.from('WalletTransaction').insert(wtData)
+            const wtIns = await supabase.from('WalletTransaction').insert(wtData)
             if (wtIns.error && (wtIns.error.message.includes('relation "public.WalletTransaction" does not exist') || wtIns.error.code === '42P01')) {
-                 await supabaseServer.from('wallet_transactions').insert({
+                 await supabase.from('wallet_transactions').insert({
                      ...wtData,
                      wallet_id: wtData.walletId,
                      performed_by: wtData.performedBy,
@@ -302,9 +305,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 const afterInvest = Number((newAmount - amt).toFixed(8))
                 
                 // Update wallet (we know which table works now ideally, but just safe retry)
-                let wUpd = await supabaseServer.from('Wallet').update({ balance: afterInvest, updatedAt: new Date().toISOString() }).eq('id', walletId)
+                let wUpd = await supabase.from('Wallet').update({ balance: afterInvest, updatedAt: new Date().toISOString() }).eq('id', walletId)
                 if (wUpd.error && (wUpd.error.message.includes('relation "public.Wallet" does not exist') || wUpd.error.code === '42P01')) {
-                    await supabaseServer.from('wallets').update({ balance: afterInvest, updated_at: new Date().toISOString() }).eq('id', walletId)
+                    await supabase.from('wallets').update({ balance: afterInvest, updated_at: new Date().toISOString() }).eq('id', walletId)
                 }
                 
                 // Create Investment
@@ -320,9 +323,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     updatedAt: new Date().toISOString()
                 }
                 
-                const invIns = await supabaseServer.from('Investment').insert(invData)
+                const invIns = await supabase.from('Investment').insert(invData)
                 if (invIns.error && (invIns.error.message.includes('relation "public.Investment" does not exist') || invIns.error.code === '42P01')) {
-                    await supabaseServer.from('investments').insert({
+                    await supabase.from('investments').insert({
                         ...invData,
                         user_id: invData.userId,
                         plan_id: invData.planId,
@@ -345,9 +348,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     createdAt: new Date().toISOString()
                 }
                 
-                const debIns = await supabaseServer.from('WalletTransaction').insert(debData)
+                const debIns = await supabase.from('WalletTransaction').insert(debData)
                 if (debIns.error && (debIns.error.message.includes('relation "public.WalletTransaction" does not exist') || debIns.error.code === '42P01')) {
-                     await supabaseServer.from('wallet_transactions').insert({
+                     await supabase.from('wallet_transactions').insert({
                         ...debData,
                         wallet_id: debData.walletId,
                         performed_by: debData.performedBy,
@@ -370,9 +373,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     updatedAt: new Date().toISOString()
                 }
                 
-                const txIns = await supabaseServer.from('Transaction').insert(txData)
+                const txIns = await supabase.from('Transaction').insert(txData)
                 if (txIns.error && (txIns.error.message.includes('relation "public.Transaction" does not exist') || txIns.error.code === '42P01')) {
-                    await supabaseServer.from('transactions').insert({
+                    await supabase.from('transactions').insert({
                         ...txData,
                         user_id: txData.userId,
                         investment_id: txData.investmentId,
@@ -390,10 +393,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (type === 'WITHDRAWAL') {
             // Refund the user since funds were deducted at request time
             let wallet: any = null
-            let wq = await supabaseServer.from('Wallet').select('*').eq('userId', uid).eq('currency', curr).maybeSingle()
+            let wq = await supabase.from('Wallet').select('*').eq('userId', uid).eq('currency', curr).maybeSingle()
             
             if (wq.error && (wq.error.message.includes('relation "public.Wallet" does not exist') || wq.error.code === '42P01')) {
-                const wq2 = await supabaseServer.from('wallets').select('*').eq('user_id', uid).eq('currency', curr).maybeSingle()
+                const wq2 = await supabase.from('wallets').select('*').eq('user_id', uid).eq('currency', curr).maybeSingle()
                 if (wq2.data) wallet = { ...wq2.data, userId: wq2.data.user_id, id: wq2.data.id, balance: wq2.data.balance }
             } else {
                 wallet = wq.data
@@ -402,9 +405,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             if (wallet) {
                 const newBal = Number(wallet.balance) + amt
                 
-                let wUpd = await supabaseServer.from('Wallet').update({ balance: newBal, updatedAt: new Date().toISOString() }).eq('id', wallet.id)
+                let wUpd = await supabase.from('Wallet').update({ balance: newBal, updatedAt: new Date().toISOString() }).eq('id', wallet.id)
                 if (wUpd.error && (wUpd.error.message.includes('relation "public.Wallet" does not exist') || wUpd.error.code === '42P01')) {
-                     await supabaseServer.from('wallets').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', wallet.id)
+                     await supabase.from('wallets').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', wallet.id)
                 }
                 
                 // Log the refund
@@ -421,9 +424,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                          createdAt: new Date().toISOString()
                      }
                      
-                     const refIns = await supabaseServer.from('WalletTransaction').insert(refData)
+                     const refIns = await supabase.from('WalletTransaction').insert(refData)
                      if (refIns.error && (refIns.error.message.includes('relation "public.WalletTransaction" does not exist') || refIns.error.code === '42P01')) {
-                          await supabaseServer.from('wallet_transactions').insert({
+                          await supabase.from('wallet_transactions').insert({
                               ...refData,
                               wallet_id: refData.walletId,
                               performed_by: refData.performedBy,
@@ -440,9 +443,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (status === 'confirmed') dbStatus = 'COMPLETED'
     if (status === 'rejected') dbStatus = 'FAILED'
 
-    const { error: updErr } = await supabaseServer.from('Transaction').update({ status: dbStatus, updatedAt: new Date().toISOString() }).eq('id', id)
+    const { error: updErr } = await supabase.from('Transaction').update({ status: dbStatus, updatedAt: new Date().toISOString() }).eq('id', id)
     if (updErr && (updErr.message.includes('relation "public.Transaction" does not exist') || updErr.code === '42P01')) {
-         const { error: updErr2 } = await supabaseServer.from('transactions').update({ status: dbStatus, updated_at: new Date().toISOString() }).eq('id', id)
+         const { error: updErr2 } = await supabase.from('transactions').update({ status: dbStatus, updated_at: new Date().toISOString() }).eq('id', id)
          if (updErr2) {
              console.error('Transaction update error:', updErr2)
              return res.status(500).json({ error: 'update_failed', details: updErr2.message })
@@ -474,9 +477,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         createdAt
       }
 
-      const notifIns = await supabaseServer.from('Notification').insert(notifData)
+      const notifIns = await supabase.from('Notification').insert(notifData)
       if (notifIns.error && (notifIns.error.message.includes('relation "public.Notification" does not exist') || notifIns.error.code === '42P01')) {
-           await supabaseServer.from('notifications').insert({
+           await supabase.from('notifications').insert({
                ...notifData,
                user_id: notifData.userId,
                created_at: notifData.createdAt

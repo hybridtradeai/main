@@ -10,15 +10,18 @@ function roiRangePct(planId: string) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   try {
     const auth = String(req.headers.authorization || '')
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     if (!token) return res.status(401).json({ error: 'unauthorized' })
-    const { data: userData, error: userErr } = await supabaseServer.auth.getUser(token)
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token)
     if (userErr || !userData?.user?.id) return res.status(401).json({ error: 'invalid_token' })
     const userId = String(userData.user.id)
 
-    const { data: inv } = await supabaseServer
+    const { data: inv } = await supabase
       .from('Investment')
       .select(`
         principal,
@@ -47,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     projectedWeeklyMaxUSD = Number(projectedWeeklyMaxUSD.toFixed(2))
 
     const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString()
-    const { data: tx } = await supabaseServer
+    const { data: tx } = await supabase
       .from('Transaction')
       .select('amount,type,createdAt')
       .eq('userId', userId)

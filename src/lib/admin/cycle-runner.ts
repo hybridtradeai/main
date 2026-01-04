@@ -9,11 +9,17 @@ function addDays(dateStr: string, days: number) {
 }
 
 export async function runProfitDistributionCycle() {
+  if (!supabaseServer) {
+    console.error('Supabase server not configured');
+    return { ok: false, error: 'server_configuration_error' };
+  }
+  const supabase = supabaseServer;
+
   // Fetch settings from DB
   let serviceFeePct = Number(process.env.SERVICE_FEE_PCT ?? 5);
   try {
     // Try PascalCase
-    const { data: s1, error: e1 } = await supabaseServer
+    const { data: s1, error: e1 } = await supabase
       .from('Setting')
       .select('value')
       .eq('key', 'fee_percent')
@@ -21,7 +27,7 @@ export async function runProfitDistributionCycle() {
     
     let settings = s1;
     if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
-        const { data: s2 } = await supabaseServer.from('settings').select('value').eq('key', 'fee_percent').maybeSingle();
+        const { data: s2 } = await supabase.from('settings').select('value').eq('key', 'fee_percent').maybeSingle();
         settings = s2;
     }
     
@@ -35,7 +41,7 @@ export async function runProfitDistributionCycle() {
   // Fetch Investments
   let investments: any[] = [];
   // Try PascalCase
-  const { data: d1, error: e1 } = await supabaseServer
+  const { data: d1, error: e1 } = await supabase
     .from('Investment')
     .select(`
         id, userId, planId, principal, status, createdAt,
@@ -51,7 +57,7 @@ export async function runProfitDistributionCycle() {
       investments = d1;
   } else if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
       // Fallback to lowercase
-      const { data: d2, error: e2 } = await supabaseServer
+      const { data: d2, error: e2 } = await supabase
         .from('investments')
         .select(`
             id, user_id, plan_id, principal, status, created_at,
@@ -106,7 +112,7 @@ export async function runProfitDistributionCycle() {
                 let alreadyPaid = false;
                 
                 // Try PascalCase
-                const { data: pl1, error: ple1 } = await supabaseServer
+                const { data: pl1, error: ple1 } = await supabase
                     .from('ProfitLog')
                     .select('id')
                     .eq('investmentId', inv.id)
@@ -116,7 +122,7 @@ export async function runProfitDistributionCycle() {
                 if (!ple1 && pl1) alreadyPaid = true;
                 
                 if (!alreadyPaid && ple1 && (ple1.message.includes('relation') || ple1.code === '42P01')) {
-                     const { data: pl2 } = await supabaseServer
+                     const { data: pl2 } = await supabase
                         .from('profit_logs')
                         .select('id')
                         .eq('investment_id', inv.id)
@@ -131,7 +137,7 @@ export async function runProfitDistributionCycle() {
                     const maxDate = addDays(weekEnding.toISOString(), 3);
                     
                     // Try PascalCase
-                    const { data: lt1, error: lte1 } = await supabaseServer
+                    const { data: lt1, error: lte1 } = await supabase
                         .from('Transaction')
                         .select('id')
                         .eq('investmentId', inv.id)
@@ -143,7 +149,7 @@ export async function runProfitDistributionCycle() {
                     if (!lte1 && lt1 && lt1.length > 0) alreadyPaid = true;
 
                     if (!alreadyPaid && lte1 && (lte1.message.includes('relation') || lte1.code === '42P01')) {
-                         const { data: lt2 } = await supabaseServer
+                         const { data: lt2 } = await supabase
                             .from('transactions')
                             .select('id')
                             .eq('investment_id', inv.id)
@@ -164,7 +170,7 @@ export async function runProfitDistributionCycle() {
                     let currentBalance = 0;
                     
                     // Try PascalCase
-                    const { data: w1, error: we1 } = await supabaseServer
+                    const { data: w1, error: we1 } = await supabase
                         .from('Wallet')
                         .select('id,balance')
                         .eq('userId', inv.userId)
@@ -180,13 +186,13 @@ export async function runProfitDistributionCycle() {
                         if (w1?.id) {
                             walletId = w1.id;
                             currentBalance = Number(w1.balance);
-                            await supabaseServer
+                            await supabase
                                 .from('Wallet')
                                 .update({ balance: currentBalance + net, updatedAt: new Date().toISOString() })
                                 .eq('id', walletId);
                         } else {
                             walletId = crypto.randomUUID();
-                            await supabaseServer
+                            await supabase
                                 .from('Wallet')
                                 .insert({ 
                                     id: walletId,
@@ -198,7 +204,7 @@ export async function runProfitDistributionCycle() {
                         }
                     } else {
                          // Lowercase Wallet
-                         const { data: w2 } = await supabaseServer
+                         const { data: w2 } = await supabase
                             .from('wallets')
                             .select('id,balance')
                             .eq('user_id', inv.userId)
@@ -208,13 +214,13 @@ export async function runProfitDistributionCycle() {
                         if (w2?.id) {
                             walletId = w2.id;
                             currentBalance = Number(w2.balance);
-                            await supabaseServer
+                            await supabase
                                 .from('wallets')
                                 .update({ balance: currentBalance + net, updated_at: new Date().toISOString() })
                                 .eq('id', walletId);
                         } else {
                             walletId = crypto.randomUUID();
-                            await supabaseServer
+                            await supabase
                                 .from('wallets')
                                 .insert({ 
                                     id: walletId,
@@ -248,9 +254,9 @@ export async function runProfitDistributionCycle() {
                     };
 
                     // Try PascalCase
-                    const { error: txe1 } = await supabaseServer.from('Transaction').insert(txData);
+                    const { error: txe1 } = await supabase.from('Transaction').insert(txData);
                     if (txe1 && (txe1.message.includes('relation') || txe1.code === '42P01')) {
-                         await supabaseServer.from('transactions').insert({
+                         await supabase.from('transactions').insert({
                              ...txData,
                              user_id: txData.userId,
                              investment_id: txData.investmentId,
@@ -270,9 +276,9 @@ export async function runProfitDistributionCycle() {
                     };
                     
                     // Try PascalCase
-                    const { error: ple1 } = await supabaseServer.from('ProfitLog').insert(plData);
+                    const { error: ple1 } = await supabase.from('ProfitLog').insert(plData);
                     if (ple1 && (ple1.message.includes('relation') || ple1.code === '42P01')) {
-                        await supabaseServer.from('profit_logs').insert({
+                        await supabase.from('profit_logs').insert({
                             id: plId,
                             investment_id: plData.investmentId,
                             amount: plData.amount,
@@ -292,7 +298,7 @@ export async function runProfitDistributionCycle() {
     let released = false;
     
     // Try PascalCase
-    const { data: rel1, error: rele1 } = await supabaseServer
+    const { data: rel1, error: rele1 } = await supabase
       .from('Transaction')
       .select('id')
       .eq('userId', inv.userId)
@@ -304,7 +310,7 @@ export async function runProfitDistributionCycle() {
     if (!rele1 && rel1 && rel1.length > 0) released = true;
     
     if (!released && rele1 && (rele1.message.includes('relation') || rele1.code === '42P01')) {
-        const { data: rel2 } = await supabaseServer
+        const { data: rel2 } = await supabase
           .from('transactions')
           .select('id')
           .eq('user_id', inv.userId)
@@ -321,7 +327,7 @@ export async function runProfitDistributionCycle() {
       
       // Upsert Wallet Logic (Reuse logic?)
       // Try PascalCase
-      const { data: w1, error: we1 } = await supabaseServer
+      const { data: w1, error: we1 } = await supabase
         .from('Wallet')
         .select('id,balance')
         .eq('userId', inv.userId)
@@ -336,12 +342,12 @@ export async function runProfitDistributionCycle() {
       if (!useLowercaseWallet) {
            if (w1?.id) {
                walletId = w1.id;
-               await supabaseServer
+               await supabase
                  .from('Wallet')
                  .update({ balance: Number(w1.balance) + Number(inv.principal), updatedAt: new Date().toISOString() })
                  .eq('id', walletId);
            } else {
-               const { data: newWallet } = await supabaseServer
+               const { data: newWallet } = await supabase
                  .from('Wallet')
                  .insert({ 
                    id: crypto.randomUUID(),
@@ -355,7 +361,7 @@ export async function runProfitDistributionCycle() {
                if (newWallet) walletId = newWallet.id;
            }
       } else {
-           const { data: w2 } = await supabaseServer
+           const { data: w2 } = await supabase
              .from('wallets')
              .select('id,balance')
              .eq('user_id', inv.userId)
@@ -364,12 +370,12 @@ export async function runProfitDistributionCycle() {
              
            if (w2?.id) {
                walletId = w2.id;
-               await supabaseServer
+               await supabase
                  .from('wallets')
                  .update({ balance: Number(w2.balance) + Number(inv.principal), updated_at: new Date().toISOString() })
                  .eq('id', walletId);
            } else {
-               const { data: newWallet } = await supabaseServer
+               const { data: newWallet } = await supabase
                  .from('wallets')
                  .insert({ 
                    id: crypto.randomUUID(),
@@ -401,9 +407,9 @@ export async function runProfitDistributionCycle() {
           };
           
           // Try PascalCase
-          const { error: wte1 } = await supabaseServer.from('WalletTransaction').insert(wtData);
+          const { error: wte1 } = await supabase.from('WalletTransaction').insert(wtData);
           if (wte1 && (wte1.message.includes('relation') || wte1.code === '42P01')) {
-               await supabaseServer.from('wallet_transactions').insert({
+               await supabase.from('wallet_transactions').insert({
                    ...wtData,
                    wallet_id: wtData.walletId,
                    created_at: wtData.createdAt,
@@ -427,9 +433,9 @@ export async function runProfitDistributionCycle() {
           updatedAt: new Date().toISOString()
       };
       
-      const { error: txe1 } = await supabaseServer.from('Transaction').insert(txData);
+      const { error: txe1 } = await supabase.from('Transaction').insert(txData);
       if (txe1 && (txe1.message.includes('relation') || txe1.code === '42P01')) {
-          await supabaseServer.from('transactions').insert({
+          await supabase.from('transactions').insert({
               ...txData,
               user_id: txData.userId,
               investment_id: txData.investmentId,
@@ -440,13 +446,13 @@ export async function runProfitDistributionCycle() {
 
       // Update Investment Status
       // Try PascalCase
-      const { error: ie1 } = await supabaseServer
+      const { error: ie1 } = await supabase
         .from('Investment')
         .update({ status: 'MATURED' })
         .eq('id', inv.id);
         
       if (ie1 && (ie1.message.includes('relation') || ie1.code === '42P01')) {
-           await supabaseServer
+           await supabase
             .from('investments')
             .update({ status: 'MATURED' }) 
             .eq('id', inv.id);

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { requireRole } from '@lib/requireRole'
 import { broadcastQueue } from '@lib/queue/broadcastQueue'

@@ -9,6 +9,9 @@ const limiter = createRateLimiter({ windowMs: 60_000, max: 5 })
 type Body = { userId?: string; email?: string; amount?: number; currency?: string; note?: string; description?: string }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   if (req.method === 'GET') {
     // Return recent admin manual credit actions for history table with pagination
     const admin = await requireAdmin(req)
@@ -21,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let txResult: any = { data: [], error: null, count: 0 }
     
     // Try PascalCase
-    const txRes1 = await supabaseServer
+    const txRes1 = await supabase
       .from('Transaction')
       .select('id,userId,amount,currency,createdAt,reference', { count: 'exact' })
       .eq('type', 'admin_credit')
@@ -30,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (txRes1.error && (txRes1.error.message.includes('relation "public.Transaction" does not exist') || txRes1.error.code === '42P01')) {
         // Fallback to lowercase
-        const txRes2 = await supabaseServer
+        const txRes2 = await supabase
           .from('transactions')
           .select('id,userId:user_id,amount,currency,createdAt:created_at,reference', { count: 'exact' })
           .eq('type', 'admin_credit')
@@ -53,14 +56,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let wtxResult: any = { data: [], error: null }
         
         // Try PascalCase
-        const wtxRes1 = await supabaseServer
+        const wtxRes1 = await supabase
             .from('WalletTransaction')
             .select('reference, note')
             .in('reference', txIds)
 
         if (wtxRes1.error && (wtxRes1.error.message.includes('relation "public.WalletTransaction" does not exist') || wtxRes1.error.code === '42P01')) {
              // Fallback to lowercase
-             wtxResult = await supabaseServer
+             wtxResult = await supabase
                 .from('wallet_transactions')
                 .select('reference, note')
                 .in('reference', txIds)
@@ -125,7 +128,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (threshold && amount > threshold) {
         // High value credit: insert into Transaction as PENDING
         const newId = crypto.randomUUID()
-        const { data: txInserted } = await supabaseServer
+        const { data: txInserted } = await supabase
           .from('Transaction')
           .insert({
             id: newId,
@@ -141,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .maybeSingle()
         
         // Also log wallet transaction for meta
-        await supabaseServer.from('WalletTransaction').insert({
+        await supabase.from('WalletTransaction').insert({
             id: crypto.randomUUID(),
             walletId: 'pending', // No wallet yet
             amount: amount,
@@ -160,7 +163,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const currency = (req.body as Body)?.currency || 'USD'
 
     // Fetch or create wallet in Supabase
-    const { data: existing, error: selectErr } = await supabaseServer
+    const { data: existing, error: selectErr } = await supabase
       .from('Wallet')
       .select('id,balance')
       .eq('userId', resolvedUserId)
@@ -171,7 +174,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let walletId = existing?.id as string | undefined
     let currentAmount = Number(existing?.balance ?? 0)
     if (!walletId) {
-      const { data: inserted, error: insertErr } = await supabaseServer
+      const { data: inserted, error: insertErr } = await supabase
         .from('Wallet')
         .insert({ id: crypto.randomUUID(), userId: resolvedUserId, currency, balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
         .select()
@@ -182,7 +185,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const newAmount = Number((currentAmount + amount).toFixed(8))
-    const { error: updateErr } = await supabaseServer
+    const { error: updateErr } = await supabase
       .from('Wallet')
       .update({ balance: newAmount, updatedAt: new Date().toISOString() })
       .eq('id', walletId!)
@@ -191,7 +194,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Record transaction in Supabase for visibility in dashboards/history
     let txId = crypto.randomUUID()
     try {
-      const { error: txErr } = await supabaseServer
+      const { error: txErr } = await supabase
         .from('Transaction')
         .insert({
           id: txId,
@@ -215,7 +218,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (e.message === 'RELATION_NOT_FOUND' || e.message?.includes('relation') || e.code === '42P01') {
             try {
                 // Fallback to snake_case 'transactions'
-                await supabaseServer
+                await supabase
                     .from('transactions')
                     .insert({
                         id: txId,
@@ -238,7 +241,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Log via Supabase (replacing Prisma)
     let txn: any = null
     try {
-      const { data: wtx } = await supabaseServer.from('WalletTransaction').insert({
+      const { data: wtx } = await supabase.from('WalletTransaction').insert({
           id: crypto.randomUUID(),
           walletId: walletId!,
           amount: amount,
@@ -255,7 +258,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Create and broadcast a user notification for instant feedback
     try {
       // Use Supabase for Notification
-      const { data: notif } = await supabaseServer.from('Notification').insert({
+      const { data: notif } = await supabase.from('Notification').insert({
           userId: resolvedUserId,
           type: 'manual_credit',
           title: 'Manual Credit',
@@ -309,6 +312,7 @@ function isEmailLike(s?: string) {
 }
 
 async function findPublicUser(criteria: { id?: string, email?: string }) {
+  if (!supabaseServer) return null
   if (!criteria.id && !criteria.email) return null
   
   // Try PascalCase User
@@ -331,6 +335,7 @@ async function findPublicUser(criteria: { id?: string, email?: string }) {
 }
 
 async function syncUserToPublic(id: string, email: string) {
+    if (!supabaseServer) return false
     if (!id || !email) return false
     try {
         // Try PascalCase
@@ -364,6 +369,7 @@ async function syncUserToPublic(id: string, email: string) {
 }
 
 async function resolveSupabaseUserId({ userId, email }: { userId?: string; email?: string }): Promise<string | ''> {
+  if (!supabaseServer) return ''
   const id = String(userId || '').trim()
   const mail = String(email || '').trim()
 

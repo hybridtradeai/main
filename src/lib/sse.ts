@@ -3,12 +3,12 @@ import { pub, sub, redisEnabled } from './redis'
 
 export async function publish(channel: string, payload: unknown) {
   const data = JSON.stringify(payload)
-  if (!redisEnabled) return
+  if (!redisEnabled || !pub) return
   try { await pub.publish(channel, data) } catch {}
 }
 
-export function subscribe(channel: string, handler: (payload: any) => void, client: Redis = sub) {
-  if (!redisEnabled) return () => {}
+export function subscribe(channel: string, handler: (payload: any) => void, client: Redis | null = sub) {
+  if (!redisEnabled || !client) return () => {}
   try { 
     const p: any = (client as any).subscribe(channel)
     if (p && typeof p.then === 'function') { p.catch(() => {}) }

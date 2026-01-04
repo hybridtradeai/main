@@ -13,11 +13,17 @@ import crypto from 'crypto';
 async function main() {
     console.log('--- Starting Investment Lifecycle Verification ---');
 
+    if (!supabaseServer) {
+        console.error('Supabase server not configured');
+        process.exit(1);
+    }
+    const supabase = supabaseServer;
+
     // 1. Setup Test User
     const testEmail = `test.lifecycle.${Date.now()}@example.com`;
     console.log(`[Setup] Creating auth user: ${testEmail}`);
     
-    const { data: authUser, error: authError } = await supabaseServer.auth.admin.createUser({
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email: testEmail,
         email_confirm: true,
         user_metadata: { name: 'Lifecycle Test User' }
@@ -33,12 +39,12 @@ async function main() {
 
     // Try insert User (public profile) if not auto-created by triggers
     // We check if it exists first
-    const { data: existingUser } = await supabaseServer.from('User').select('id').eq('id', userId).maybeSingle();
-    const { data: existingUserLow } = await supabaseServer.from('users').select('id').eq('id', userId).maybeSingle();
+    const { data: existingUser } = await supabase.from('User').select('id').eq('id', userId).maybeSingle();
+    const { data: existingUserLow } = await supabase.from('users').select('id').eq('id', userId).maybeSingle();
     
     if (!existingUser && !existingUserLow) {
         console.log('[Setup] Creating public user profile...');
-        const { data: uData, error: uErr } = await supabaseServer.from('User').insert({
+        const { data: uData, error: uErr } = await supabase.from('User').insert({
             id: userId,
             email: testEmail,
             name: 'Lifecycle Test User',
@@ -52,7 +58,7 @@ async function main() {
         if (uErr) {
             if (uErr.message.includes('relation') || uErr.code === '42P01') {
                 console.log('[Debug] User table missing, trying lowercase users...');
-                const { data: uData2, error: uErr2 } = await supabaseServer.from('users').insert({
+                const { data: uData2, error: uErr2 } = await supabase.from('users').insert({
                     id: userId,
                     email: testEmail,
                     name: 'Lifecycle Test User',
@@ -69,20 +75,20 @@ async function main() {
     }
 
     // Verify User Exists in 'User' table
-    const { data: verifyUser, error: verifyErr } = await supabaseServer.from('User').select('id').eq('id', userId).maybeSingle();
+    const { data: verifyUser, error: verifyErr } = await supabase.from('User').select('id').eq('id', userId).maybeSingle();
     if (verifyUser) {
         console.log('[Debug] User confirmed in "User" table.');
     } else {
         console.error('[Debug] User NOT found in "User" table.', verifyErr);
         // Check 'users' table
-        const { data: verifyUserLow } = await supabaseServer.from('users').select('id').eq('id', userId).maybeSingle();
+        const { data: verifyUserLow } = await supabase.from('users').select('id').eq('id', userId).maybeSingle();
         if (verifyUserLow) console.log('[Debug] User found in "users" table instead.');
     }
 
     // 2. Setup Wallet
     console.log('[Setup] Creating USD Wallet with $10,000');
     const walletId = crypto.randomUUID();
-    const { error: wErr } = await supabaseServer.from('Wallet').insert({
+    const { error: wErr } = await supabase.from('Wallet').insert({
         id: walletId,
         userId,
         currency: 'USD',
@@ -92,7 +98,7 @@ async function main() {
     });
 
     if (wErr && (wErr.message.includes('relation') || wErr.code === '42P01')) {
-        await supabaseServer.from('wallets').insert({
+        await supabase.from('wallets').insert({
             id: walletId,
             user_id: userId,
             currency: 'USD',
@@ -105,10 +111,10 @@ async function main() {
     // 3. Get Plan (Starter)
     console.log('[Setup] Fetching Starter Plan');
     let plan: any = null;
-    const { data: p1 } = await supabaseServer.from('InvestmentPlan').select('*').ilike('name', '%Starter%').limit(1).maybeSingle();
+    const { data: p1 } = await supabase.from('InvestmentPlan').select('*').ilike('name', '%Starter%').limit(1).maybeSingle();
     plan = p1;
     if (!plan) {
-         const { data: p2 } = await supabaseServer.from('investment_plans').select('*').ilike('name', '%Starter%').limit(1).maybeSingle();
+         const { data: p2 } = await supabase.from('investment_plans').select('*').ilike('name', '%Starter%').limit(1).maybeSingle();
          if (p2) plan = { ...p2, returnPercentage: p2.return_percentage, payoutFrequency: p2.payout_frequency };
     }
     
@@ -130,7 +136,7 @@ async function main() {
     let investmentCreated = false;
 
     // Insert Investment
-    const { error: iErr } = await supabaseServer.from('Investment').insert({
+    const { error: iErr } = await supabase.from('Investment').insert({
         id: invId,
         userId,
         planId: plan.id,
@@ -142,7 +148,7 @@ async function main() {
     });
     
     if (iErr && (iErr.message.includes('relation') || iErr.code === '42P01')) {
-        const { error: iErr2 } = await supabaseServer.from('investments').insert({
+        const { error: iErr2 } = await supabase.from('investments').insert({
             id: invId,
             user_id: userId,
             plan_id: plan.slug || 'starter',
@@ -166,8 +172,8 @@ async function main() {
     // Deduct Wallet
     console.log('[Action] Deducting Wallet Balance');
     // Simplified deduction for test
-    await supabaseServer.from('Wallet').update({ balance: 9000 }).eq('id', walletId);
-    await supabaseServer.from('wallets').update({ balance: 9000 }).eq('id', walletId); // Try both just in case
+    await supabase.from('Wallet').update({ balance: 9000 }).eq('id', walletId);
+    await supabase.from('wallets').update({ balance: 9000 }).eq('id', walletId); // Try both just in case
 
     // 5. Run Cycle
     console.log('[Action] Running Profit Distribution Cycle...');
@@ -178,10 +184,10 @@ async function main() {
     console.log('[Verify] Checking Wallet Balance for Profit...');
     
     let balance = 0;
-    const { data: wCheck1 } = await supabaseServer.from('Wallet').select('balance').eq('id', walletId).maybeSingle();
+    const { data: wCheck1 } = await supabase.from('Wallet').select('balance').eq('id', walletId).maybeSingle();
     if (wCheck1) balance = Number(wCheck1.balance);
     else {
-        const { data: wCheck2 } = await supabaseServer.from('wallets').select('balance').eq('id', walletId).maybeSingle();
+        const { data: wCheck2 } = await supabase.from('wallets').select('balance').eq('id', walletId).maybeSingle();
         if (wCheck2) balance = Number(wCheck2.balance);
     }
 
@@ -201,19 +207,19 @@ async function main() {
 
     // 7. Cleanup
     console.log('[Cleanup] Removing test data...');
-    await supabaseServer.from('Transaction').delete().eq('userId', userId);
-    await supabaseServer.from('transactions').delete().eq('user_id', userId);
-    await supabaseServer.from('ProfitLog').delete().eq('investmentId', invId);
-    await supabaseServer.from('profit_logs').delete().eq('investment_id', invId);
-    await supabaseServer.from('Investment').delete().eq('id', invId);
-    await supabaseServer.from('investments').delete().eq('id', invId);
-    await supabaseServer.from('WalletTransaction').delete().eq('walletId', walletId);
-    await supabaseServer.from('wallet_transactions').delete().eq('wallet_id', walletId);
-    await supabaseServer.from('Wallet').delete().eq('id', walletId);
-    await supabaseServer.from('wallets').delete().eq('id', walletId);
-    await supabaseServer.from('User').delete().eq('id', userId);
-    await supabaseServer.from('users').delete().eq('id', userId);
-    await supabaseServer.auth.admin.deleteUser(userId);
+    await supabase.from('Transaction').delete().eq('userId', userId);
+    await supabase.from('transactions').delete().eq('user_id', userId);
+    await supabase.from('ProfitLog').delete().eq('investmentId', invId);
+    await supabase.from('profit_logs').delete().eq('investment_id', invId);
+    await supabase.from('Investment').delete().eq('id', invId);
+    await supabase.from('investments').delete().eq('id', invId);
+    await supabase.from('WalletTransaction').delete().eq('walletId', walletId);
+    await supabase.from('wallet_transactions').delete().eq('wallet_id', walletId);
+    await supabase.from('Wallet').delete().eq('id', walletId);
+    await supabase.from('wallets').delete().eq('id', walletId);
+    await supabase.from('User').delete().eq('id', userId);
+    await supabase.from('users').delete().eq('id', userId);
+    await supabase.auth.admin.deleteUser(userId);
     
     console.log('--- Verification Complete ---');
 }

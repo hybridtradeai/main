@@ -15,6 +15,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Check Supabase wallets accessibility with service role
   try {
+    if (!supabaseServer) throw new Error('Supabase not configured')
+
     // Try PascalCase
     const { error: e1 } = await supabaseServer
       .from('Wallet')

@@ -6,6 +6,9 @@ import { requireAdmin } from '../../../../lib/adminAuth';
 const BodySchema = z.object({ email: z.string().email() });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const admin = await requireAdmin(req);
   if (!admin.ok) return res.status(401).json({ error: admin.error || 'Unauthorized' });
@@ -15,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // Invite user by email (sends a sign-up email) and returns the user if exists/created
-    const { data: invite, error: inviteErr } = await supabaseServer.auth.admin.inviteUserByEmail(email);
+    const { data: invite, error: inviteErr } = await supabase.auth.admin.inviteUserByEmail(email);
     if (inviteErr) return res.status(500).json({ ok: false, error: inviteErr.message || 'Invite failed' });
     const userId = invite.user?.id;
     if (!userId) return res.status(500).json({ ok: false, error: 'Invite did not return a user ID' });
@@ -25,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let profileData: any = null
     const upsertData = { user_id: userId, role: 'admin', is_admin: true }
     
-    let { data, error } = await supabaseServer
+    let { data, error } = await supabase
       .from('profiles')
       .upsert(upsertData, { onConflict: 'user_id' })
       .select()
@@ -36,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
          // Note: PascalCase usually uses camelCase columns in our mapping, but Supabase columns are what they are.
          // If table is Profile, columns might be userId, isAdmin.
          const upsertDataPascal = { userId: userId, role: 'admin', isAdmin: true }
-         const { data: data2, error: error2 } = await supabaseServer
+         const { data: data2, error: error2 } = await supabase
             .from('Profile')
             .upsert(upsertDataPascal, { onConflict: 'userId' })
             .select()

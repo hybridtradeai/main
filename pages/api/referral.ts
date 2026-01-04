@@ -3,6 +3,9 @@ import crypto from 'crypto';
 import { supabaseServer } from '@lib/supabaseServer';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   
   // Authentication check
@@ -20,10 +23,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Upsert equivalent: Try to find existing first
     let existing: any = null;
-    const { data: r1, error: e1 } = await supabaseServer.from('Referral').select('*').eq('userId', userId).maybeSingle();
+    const { data: r1, error: e1 } = await supabase.from('Referral').select('*').eq('userId', userId).maybeSingle();
     
     if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
-      const { data: r2 } = await supabaseServer.from('referrals').select('*').eq('user_id', userId).maybeSingle();
+      const { data: r2 } = await supabase.from('referrals').select('*').eq('user_id', userId).maybeSingle();
       if (r2) existing = { ...r2, id: r2.id, userId: r2.user_id, code: r2.code };
     } else {
       existing = r1;
@@ -33,16 +36,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     if (existing) {
       // Update
-      const { error: u1 } = await supabaseServer.from('Referral').update({ code: referralCode, updatedAt: now }).eq('id', existing.id);
+      const { error: u1 } = await supabase.from('Referral').update({ code: referralCode, updatedAt: now }).eq('id', existing.id);
       if (u1 && (u1.message.includes('relation') || u1.code === '42P01')) {
-         await supabaseServer.from('referrals').update({ code: referralCode, updated_at: now }).eq('id', existing.id);
+         await supabase.from('referrals').update({ code: referralCode, updated_at: now }).eq('id', existing.id);
       }
     } else {
       // Create
       const id = crypto.randomUUID();
-      const { error: c1 } = await supabaseServer.from('Referral').insert({ id, userId, code: referralCode, createdAt: now, updatedAt: now });
+      const { error: c1 } = await supabase.from('Referral').insert({ id, userId, code: referralCode, createdAt: now, updatedAt: now });
       if (c1 && (c1.message.includes('relation') || c1.code === '42P01')) {
-         await supabaseServer.from('referrals').insert({ id, user_id: userId, code: referralCode, created_at: now, updated_at: now });
+         await supabase.from('referrals').insert({ id, user_id: userId, code: referralCode, created_at: now, updated_at: now });
       }
     }
     

@@ -12,6 +12,10 @@ const BodySchema = z.object({
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' });
+  const supabase = supabaseServer;
+
   const admin = await requireAdmin(req);
   if (!admin.ok) return res.status(401).json({ error: admin.error || 'Unauthorized' });
   const parse = BodySchema.safeParse(req.body || {});
@@ -30,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let result: any = null;
     try {
       // First check if it exists in PascalCase
-      const { data: existing, error: errExist } = await supabaseServer
+      const { data: existing, error: errExist } = await supabase
         .from('Performance')
         .select('*')
         .eq('weekEnding', weekEnding)
@@ -45,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (!useLowercase) {
           if (existing) {
-            const { data, error } = await supabaseServer
+            const { data, error } = await supabase
                 .from('Performance')
                 .update({ streamRois: streamRois })
                 .eq('id', existing.id)
@@ -54,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             if (error) throw error;
             result = data;
           } else {
-             const { data, error } = await supabaseServer
+             const { data, error } = await supabase
                 .from('Performance')
                 .insert({
                     id: crypto.randomUUID(),
@@ -70,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
       } else {
           // Fallback to lowercase
-          const { data: existingLower, error: errLower } = await supabaseServer
+          const { data: existingLower, error: errLower } = await supabase
             .from('performance')
             .select('*')
             .eq('week_ending', weekEnding)
@@ -79,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (errLower && errLower.code !== 'PGRST116') throw errLower;
 
           if (existingLower) {
-            const { data, error } = await supabaseServer
+            const { data, error } = await supabase
                 .from('performance')
                 .update({ stream_rois: streamRois })
                 .eq('id', existingLower.id)
@@ -95,7 +99,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 updatedAt: data.updated_at
             };
           } else {
-             const { data, error } = await supabaseServer
+             const { data, error } = await supabase
                 .from('performance')
                 .insert({
                     id: crypto.randomUUID(),

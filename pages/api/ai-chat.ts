@@ -52,6 +52,9 @@ function fallback(kind: string) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   const { prompt } = req.body || {}
   const kind = intent(String(prompt || ''))
@@ -62,10 +65,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const auth = String(req.headers.authorization || '')
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     if (token) {
-      const { data, error } = await supabaseServer.auth.getUser(token)
+      const { data, error } = await supabase.auth.getUser(token)
       const uid = !error && data?.user?.id ? String(data.user.id) : ''
       if (uid) {
-        const { data: prof } = await supabaseServer.from('profiles').select('kyc_status').eq('user_id', uid).maybeSingle()
+        const { data: prof } = await supabase.from('profiles').select('kyc_status').eq('user_id', uid).maybeSingle()
         const kyc = String((prof as any)?.kyc_status || '')
         if (kyc) userCtx = `UserKyc:${kyc}`
       }

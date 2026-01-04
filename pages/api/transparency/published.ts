@@ -4,7 +4,7 @@ import summary from '../transparency'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const raw = await redis.get('por:published')
+    const raw = redis ? await redis.get('por:published') : null
     if (raw) {
       const cfg = JSON.parse(String(raw))
       const payload = {

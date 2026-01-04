@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { requireRole } from '@lib/requireRole'
 import { supabaseServer, supabaseServiceReady } from '@lib/supabaseServer'
@@ -11,16 +13,21 @@ function sse(data: any, id?: string, event?: string) {
 }
 
 export async function GET(req: NextRequest) {
+  if (!supabaseServer) {
+    return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  }
+  const supabase = supabaseServer
+
   let userId = ''
   const url = new URL(req.url)
   const token = url.searchParams.get('token') || ''
   if (token) {
-    const { data, error } = await supabaseServer.auth.getUser(token)
+    const { data, error } = await supabase.auth.getUser(token)
     if (!error && data?.user?.id) userId = String(data.user.id)
   }
   if (!userId) {
     const { user, error } = await requireRole('USER', req)
-    if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+    if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
     userId = String(user.id)
   }
   const lastEventId = url.searchParams.get('lastEventId')
@@ -30,8 +37,8 @@ export async function GET(req: NextRequest) {
     async start(controller) {
       const heartbeat = setInterval(() => controller.enqueue(new TextEncoder().encode(`:hb\n\n`)), 25000)
 
-      if (supabaseServiceReady && lastDate && !isNaN(lastDate.getTime())) {
-        const { data: personals, error } = await supabaseServer
+      if (lastDate && !isNaN(lastDate.getTime())) {
+        const { data: personals, error } = await supabase
           .from('Notification')
           .select('*')
           .eq('userId', userId)

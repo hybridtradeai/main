@@ -20,7 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ;(summary as any)(req, fakeRes)
     })
 
-    const dpRaw = await redis.get('por:dp')
+    const dpRaw = redis ? await redis.get('por:dp') : null
     const dp = dpRaw ? JSON.parse(String(dpRaw)) : null
     const epsilon = Number(dp?.epsilon ?? process.env.DP_EPSILON ?? 0.5)
     const sensitivity = Number(dp?.sensitivity ?? process.env.DP_SENSITIVITY ?? 1000)
@@ -32,10 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const now = Date.now()
     const nextUpdateAt = new Date(now + (30_000 + Math.random() * 90_000)).toISOString()
-    const lastRaw = await redis.get('por:last:coverage')
+    const lastRaw = redis ? await redis.get('por:last:coverage') : null
     const last = lastRaw ? Number(lastRaw) : null
     const trend = last == null ? 'flat' : noisyCov > last ? 'up' : noisyCov < last ? 'down' : 'flat'
-    await redis.set('por:last:coverage', String(noisyCov))
+    if (redis) await redis.set('por:last:coverage', String(noisyCov))
 
     return res.status(200).json({
       mode: 'public',

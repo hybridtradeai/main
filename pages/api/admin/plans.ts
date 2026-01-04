@@ -7,6 +7,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' });
+  const supabase = supabaseServer;
+
   try {
     const admin = await requireAdmin(req);
     if (!admin.ok) return res.status(401).json({ error: admin.error || 'Unauthorized' });
@@ -18,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Try PascalCase first
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('InvestmentPlan')
       .update({
         returnPercentage,
@@ -36,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Check for table not found error
       if (error.message.includes('relation "public.InvestmentPlan" does not exist') || error.code === '42P01') {
            // Fallback to lowercase
-           const { data: dataLower, error: errorLower } = await supabaseServer
+           const { data: dataLower, error: errorLower } = await supabase
               .from('investment_plans')
               .update({
                 return_percentage: returnPercentage,

@@ -2,8 +2,13 @@ import { NextRequest } from 'next/server'
 import crypto from 'crypto'
 import { supabaseServer } from '../../../../lib/supabaseServer'
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
+    if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+    const supabase = supabaseServer
+
     const raw = await req.text()
     let body: any = {}
     try { 
@@ -44,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Find transaction by order_id
-    const { data: tx, error: txError } = await supabaseServer
+    const { data: tx, error: txError } = await supabase
       .from('Transaction')
       .select('*')
       .eq('id', orderId)
@@ -76,7 +81,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Update transaction status
-      await supabaseServer
+      await supabase
         .from('Transaction')
         .update({ 
           status: 'COMPLETED',
@@ -91,7 +96,7 @@ export async function POST(req: NextRequest) {
       const creditAmount = priceAmount > 0 ? priceAmount : Number(tx.amount || 0)
 
       // Find or create wallet
-      let { data: wallet } = await supabaseServer
+      let { data: wallet } = await supabase
         .from('Wallet')
         .select('*')
         .eq('userId', uid)
@@ -99,7 +104,7 @@ export async function POST(req: NextRequest) {
         .single()
       
       if (!wallet) {
-        const { data: newWallet, error: walletError } = await supabaseServer
+        const { data: newWallet, error: walletError } = await supabase
           .from('Wallet')
           .insert({
             id: crypto.randomUUID(),
@@ -115,7 +120,7 @@ export async function POST(req: NextRequest) {
         if (walletError) {
              console.error('Failed to create wallet:', walletError)
              // fallback to find again in case of race condition
-             const { data: existing } = await supabaseServer.from('Wallet').select('*').eq('userId', uid).eq('currency', curr).single()
+             const { data: existing } = await supabase.from('Wallet').select('*').eq('userId', uid).eq('currency', curr).single()
              wallet = existing
         } else {
              wallet = newWallet
@@ -131,7 +136,7 @@ export async function POST(req: NextRequest) {
 
       // Credit the wallet
       const newBal = Number((current + creditAmount).toFixed(8))
-      await supabaseServer
+      await supabase
         .from('Wallet')
         .update({ 
             balance: newBal,
@@ -140,7 +145,7 @@ export async function POST(req: NextRequest) {
         .eq('id', walletId)
 
       // Log Wallet Credit (Deposit)
-      await supabaseServer
+      await supabase
         .from('WalletTransaction')
         .insert({
             id: crypto.randomUUID(),
@@ -163,7 +168,7 @@ export async function POST(req: NextRequest) {
         // Create investment record
         try {
             // Find plan by ID or Name
-            const { data: plan } = await supabaseServer
+            const { data: plan } = await supabase
                 .from('InvestmentPlan')
                 .select('*')
                 .or(`id.eq.${planId},name.eq.${planId}`)
@@ -174,7 +179,7 @@ export async function POST(req: NextRequest) {
                 // Check if balance is sufficient (it is, we just credited it)
                 const afterInvestBal = Number((newBal - creditAmount).toFixed(8))
                 
-                await supabaseServer
+                await supabase
                     .from('Wallet')
                     .update({ 
                         balance: afterInvestBal,
@@ -183,7 +188,7 @@ export async function POST(req: NextRequest) {
                     .eq('id', walletId)
 
                 // Log Wallet Debit (Investment)
-                await supabaseServer
+                await supabase
                     .from('WalletTransaction')
                     .insert({
                         id: crypto.randomUUID(),
@@ -198,7 +203,7 @@ export async function POST(req: NextRequest) {
 
                 // Create Active Investment
                 const invId = crypto.randomUUID()
-                const { data: inv, error: invError } = await supabaseServer
+                const { data: inv, error: invError } = await supabase
                     .from('Investment')
                     .insert({
                         id: invId,
@@ -220,7 +225,7 @@ export async function POST(req: NextRequest) {
                 }
                 
                 // Create Investment Transaction Record
-                await supabaseServer
+                await supabase
                     .from('Transaction')
                     .insert({
                         id: crypto.randomUUID(),
@@ -256,7 +261,7 @@ export async function POST(req: NextRequest) {
     }
 
     // For other statuses (waiting, confirming, etc.), just acknowledge
-    await supabaseServer
+    await supabase
         .from('Transaction')
         .update({ 
             reference: JSON.stringify(updateRef),
@@ -270,4 +275,3 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: 'server_error', details: e?.message || 'error' }), { status: 500 })
   }
 }
-

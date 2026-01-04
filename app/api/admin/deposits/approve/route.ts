@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -10,6 +12,7 @@ export async function POST(req: NextRequest) {
   if (!id) return new Response(JSON.stringify({ error: 'invalid' }), { status: 400 })
 
   // 1. Fetch Transaction with Fallback
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
   let tx: any = null;
   const { data: tx1, error: txErr1 } = await supabaseServer.from('Transaction').select('*').eq('id', id).maybeSingle()
   

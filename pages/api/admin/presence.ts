@@ -11,11 +11,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let count = 0
     let entries: { userId: string; ts: number }[] = []
     try {
-      const c = await redis.zcount(key, now - 60_000, '+inf')
-      count = Number(c || 0)
-      const raw = await redis.zrevrange(key, 0, 50, 'WITHSCORES')
-      for (let i = 0; i < raw.length; i += 2) {
-        entries.push({ userId: String(raw[i]), ts: Number(raw[i + 1]) })
+      if (redis) {
+        const c = await redis.zcount(key, now - 60_000, '+inf')
+        count = Number(c || 0)
+        const raw = await redis.zrevrange(key, 0, 50, 'WITHSCORES')
+        for (let i = 0; i < raw.length; i += 2) {
+          entries.push({ userId: String(raw[i]), ts: Number(raw[i + 1]) })
+        }
       }
     } catch {}
     return res.status(200).json({ generatedAt: new Date().toISOString(), activeCount: count, entries })

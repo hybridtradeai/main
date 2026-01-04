@@ -20,4 +20,4 @@ function createDisabledClient(): any {
   return { auth: { getUser: err }, from }
 }
 
-export const supabaseServer = supabaseServiceReady ? createClient(url, serviceKey) : createDisabledClient()
+export const supabaseServer = supabaseServiceReady ? createClient(url, serviceKey) : null

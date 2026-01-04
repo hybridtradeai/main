@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer, supabaseServiceReady } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -8,15 +10,17 @@ function isUuid(v: string) {
 }
 
 async function createNotification(userId: string, type: string, title: string, message: string) {
+    if (!supabaseServer) return null
+    const supabase = supabaseServer
     const now = new Date().toISOString()
     const nData = { userId, type, title, message, createdAt: now }
     
     // Try PascalCase
-    const { data: n1, error: err1 } = await supabaseServer.from('Notification').insert(nData).select().single()
+    const { data: n1, error: err1 } = await supabase.from('Notification').insert(nData).select().single()
     
     if (err1 && (err1.message.includes('relation') || err1.code === '42P01')) {
         // Fallback
-        const { data: n2 } = await supabaseServer.from('notifications').insert({
+        const { data: n2 } = await supabase.from('notifications').insert({
             user_id: userId,
             type,
             title,
@@ -35,8 +39,11 @@ export async function GET(req: NextRequest) {
   const { error } = await requireRole('ADMIN', req)
   if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
 
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+
   // Try PascalCase with relations
-  const { data: d1, error: err1 } = await supabaseServer
+  const { data: d1, error: err1 } = await supabase
     .from('SupportTicket')
     .select('id,userId,subject,status,createdAt, User(email), Reply(id,body,isAdmin,createdAt)')
     .order('createdAt', { ascending: false })
@@ -67,7 +74,7 @@ export async function GET(req: NextRequest) {
   let tickets = []
   let isSnake = false
   
-  const { data: t1, error: tErr1 } = await supabaseServer
+  const { data: t1, error: tErr1 } = await supabase
       .from('SupportTicket')
       .select('id,userId,subject,status,createdAt')
       .order('createdAt', { ascending: false })
@@ -76,7 +83,7 @@ export async function GET(req: NextRequest) {
       tickets = t1
   } else {
       // Try snake_case
-      const { data: t2, error: tErr2 } = await supabaseServer
+      const { data: t2, error: tErr2 } = await supabase
           .from('support_tickets')
           .select('id,user_id,subject,status,created_at')
           .order('created_at', { ascending: false })
@@ -94,12 +101,12 @@ export async function GET(req: NextRequest) {
   
   if (userIds.length > 0) {
       // Try 'User'
-      const { data: u1, error: uErr1 } = await supabaseServer.from('User').select('id,email').in('id', userIds)
+      const { data: u1, error: uErr1 } = await supabase.from('User').select('id,email').in('id', userIds)
       if (!uErr1) {
           (u1 || []).forEach((u: any) => usersMap[u.id] = u)
       } else {
           // Try 'users'
-          const response = await supabaseServer.from('users').select('id,email').in('id', userIds)
+          const response = await supabase.from('users').select('id,email').in('id', userIds)
           const u2 = response.data
           if (u2) {
               (u2 as any[]).forEach((u: any) => usersMap[u.id] = u)
@@ -173,6 +180,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { user, error } = await requireRole('ADMIN', req)
   if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+  
   const body = await req.json().catch(() => ({}))
   
   // Handle new ticket creation from admin
@@ -184,14 +195,14 @@ export async function POST(req: NextRequest) {
     // Create ticket
     // Try PascalCase
     let ticket: any = null
-    const { data: t1, error: tErr1 } = await supabaseServer
+    const { data: t1, error: tErr1 } = await supabase
         .from('SupportTicket')
         .insert({ userId, subject, status: 'open' })
         .select()
         .single()
     
     if (tErr1 && (tErr1.message.includes('relation') || tErr1.code === '42P01')) {
-        const { data: t2, error: tErr2 } = await supabaseServer
+        const { data: t2, error: tErr2 } = await supabase
           .from('support_tickets')
           .insert({ user_id: userId, subject, status: 'open' })
           .select()
@@ -206,12 +217,12 @@ export async function POST(req: NextRequest) {
     
     // Create first message
     // Try PascalCase
-    const { error: mErr1 } = await supabaseServer
+    const { error: mErr1 } = await supabase
         .from('Reply')
         .insert({ ticketId: ticket.id, body: message, isAdmin: true })
         
     if (mErr1 && (mErr1.message.includes('relation') || mErr1.code === '42P01')) {
-        const { error: msgErr } = await supabaseServer
+        const { error: msgErr } = await supabase
           .from('replies')
           .insert({ ticket_id: ticket.id, body: message, is_admin: true })
         if (msgErr) return new Response(JSON.stringify({ error: 'message_failed', details: msgErr }), { status: 500 })
@@ -232,10 +243,10 @@ export async function POST(req: NextRequest) {
   
   // Get ticket to find userId
   let ticket: any = null
-  const { data: t1, error: tErr1 } = await supabaseServer.from('SupportTicket').select('id,userId').eq('id', ticketId).maybeSingle()
+  const { data: t1, error: tErr1 } = await supabase.from('SupportTicket').select('id,userId').eq('id', ticketId).maybeSingle()
   
   if (tErr1 && (tErr1.message.includes('relation') || tErr1.code === '42P01')) {
-      const { data: t2, error: tErr2 } = await supabaseServer.from('support_tickets').select('id,user_id').eq('id', ticketId).maybeSingle()
+      const { data: t2, error: tErr2 } = await supabase.from('support_tickets').select('id,user_id').eq('id', ticketId).maybeSingle()
       if (tErr2 || !t2) return new Response(JSON.stringify({ error: 'ticket_not_found' }), { status: 404 })
       ticket = { ...t2, userId: t2.user_id }
   } else if (t1) {
@@ -262,27 +273,31 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const { user, error } = await requireRole('ADMIN', req)
   if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+  
   const body = await req.json().catch(() => ({}))
   const ticketId = String(body?.ticketId || '')
   const status = String(body?.status || '')
   if (!ticketId || !status) return new Response(JSON.stringify({ error: 'invalid' }), { status: 400 })
   
   let ticket: any = null
-  const { data: t1, error: tErr1 } = await supabaseServer.from('SupportTicket').select('id,userId').eq('id', ticketId).maybeSingle()
+  const { data: t1, error: tErr1 } = await supabase.from('SupportTicket').select('id,userId').eq('id', ticketId).maybeSingle()
   
   if (tErr1 && (tErr1.message.includes('relation') || tErr1.code === '42P01')) {
-      const { data: t2 } = await supabaseServer.from('support_tickets').select('id,user_id').eq('id', ticketId).maybeSingle()
+      const { data: t2 } = await supabase.from('support_tickets').select('id,user_id').eq('id', ticketId).maybeSingle()
       if (t2) ticket = { ...t2, userId: t2.user_id }
       
-      const { error: updErr } = await supabaseServer.from('support_tickets').update({ status }).eq('id', ticketId)
+      const { error: updErr } = await supabase.from('support_tickets').update({ status }).eq('id', ticketId)
       if (updErr) return new Response(JSON.stringify({ error: 'update_failed', details: updErr }), { status: 500 })
   } else {
       ticket = t1
-      const { error: updErr } = await supabaseServer.from('SupportTicket').update({ status }).eq('id', ticketId)
+      const { error: updErr } = await supabase.from('SupportTicket').update({ status }).eq('id', ticketId)
       if (updErr) {
           if (updErr.message.includes('relation') || updErr.code === '42P01') {
               // Should have been caught by select, but just in case
-               const { error: updErr2 } = await supabaseServer.from('support_tickets').update({ status }).eq('id', ticketId)
+               const { error: updErr2 } = await supabase.from('support_tickets').update({ status }).eq('id', ticketId)
                if (updErr2) return new Response(JSON.stringify({ error: 'update_failed', details: updErr2 }), { status: 500 })
           } else {
               return new Response(JSON.stringify({ error: 'update_failed', details: updErr }), { status: 500 })

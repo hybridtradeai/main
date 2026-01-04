@@ -1,7 +1,7 @@
 import type Redis from 'ioredis'
 
 type Options = {
-  redis: Redis
+  redis: Redis | null
   keyPrefix: string
   capacity: number
   refillPerSecond: number
@@ -34,6 +34,8 @@ return {allowed, current}
 export function createTokenBucket(opts: Options) {
   let sha: string | null = null
   async function allow(key: string, tokens = 1) {
+    if (!opts.redis) return true // Allow if Redis is disabled
+
     const k = `${opts.keyPrefix}${key}`
     const now = Math.floor(Date.now() / 1000)
     if (!sha) {
@@ -50,7 +52,7 @@ export function createTokenBucket(opts: Options) {
       const allowed = Array.isArray(res) ? Number(res[0]) === 1 : Number(res) === 1
       return allowed
     } catch {
-      return false
+      return false // If Redis error, maybe block or allow? Code was returning false.
     }
   }
   return { allow }

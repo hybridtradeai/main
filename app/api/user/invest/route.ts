@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '../../../../src/lib/requireRole'
 import { supabaseServer } from '../../../../src/lib/supabaseServer'
@@ -10,10 +12,15 @@ export async function POST(req: NextRequest) {
   
   try {
     const { user, error } = await requireRole('USER', req)
-    if (error) {
+    if (error || !user) {
       console.log('[Invest API] Auth error:', error)
-      return NextResponse.json({ error }, { status: error === 'unauthenticated' ? 401 : 403 })
+      return NextResponse.json({ error: error || 'unauthenticated' }, { status: error === 'unauthenticated' ? 401 : 403 })
     }
+
+    if (!supabaseServer) {
+        return NextResponse.json({ error: 'server_configuration_error' }, { status: 500 })
+    }
+    const supabase = supabaseServer
     
     let body
     try {
@@ -53,7 +60,7 @@ export async function POST(req: NextRequest) {
         
         // 1. Try mapped name first (most reliable if slug column is missing)
         if (mappedName) {
-             const { data: byMappedName } = await supabaseServer
+             const { data: byMappedName } = await supabase
                 .from(tableName)
                 .select('*')
                 .eq('name', mappedName)
@@ -67,7 +74,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 2. Try precise slug match (if column exists)
-        const { data: bySlug, error: slugErr } = await supabaseServer
+        const { data: bySlug, error: slugErr } = await supabase
             .from(tableName)
             .select('*')
             .eq('slug', planId)
@@ -79,7 +86,7 @@ export async function POST(req: NextRequest) {
             break
         }
         // Try alternative column 'code'
-        const { data: byCode } = await supabaseServer
+        const { data: byCode } = await supabase
             .from(tableName)
             .select('*')
             .eq('code', planId)
@@ -90,7 +97,7 @@ export async function POST(req: NextRequest) {
             break
         }
         // Try 'name' exact match
-        const { data: byName } = await supabaseServer
+        const { data: byName } = await supabase
             .from(tableName)
             .select('*')
             .eq('name', planId)
@@ -103,7 +110,7 @@ export async function POST(req: NextRequest) {
         
         // Try ID match only if it looks like a UUID to avoid Postgres errors
         if (isUUID) {
-            const { data: byId, error: idErr } = await supabaseServer
+            const { data: byId, error: idErr } = await supabase
                 .from(tableName)
                 .select('*')
                 .eq('id', planId)
@@ -165,7 +172,7 @@ export async function POST(req: NextRequest) {
             console.log(`[Invest API] Seeding default plan ${plan.slug} into DB...`)
             
             // Check if plan exists first to get its ID
-            const { data: existingPlan } = await supabaseServer
+            const { data: existingPlan } = await supabase
                 .from('InvestmentPlan')
                 .select('id, name')
                 .eq('name', plan.name)
@@ -178,7 +185,7 @@ export async function POST(req: NextRequest) {
                 // Generate a CUID-like ID or UUID
                 const newId = crypto.randomUUID ? crypto.randomUUID() : `plan_${Date.now()}_${Math.random().toString(36).slice(2)}`
                 
-                const { data: seededPlan, error: seedError } = await supabaseServer
+                const { data: seededPlan, error: seedError } = await supabase
                     .from('InvestmentPlan')
                     .insert({
                         id: newId,
@@ -198,7 +205,7 @@ export async function POST(req: NextRequest) {
                 } else if (seedError) {
                     console.error('[Invest API] Failed to seed plan (InvestmentPlan):', seedError)
                     // Try lowercase table fallback
-                     const { data: seededLow, error: seedLowError } = await supabaseServer
+                     const { data: seededLow, error: seedLowError } = await supabase
                         .from('investment_plans')
                         .insert({
                             slug: plan.slug,
@@ -241,7 +248,7 @@ export async function POST(req: NextRequest) {
     // Ensure user exists in public tables to avoid FK violations
     try {
         // Try PascalCase User
-        const { error: userErr } = await supabaseServer
+        const { error: userErr } = await supabase
             .from('User')
             .upsert({
                 id: userId,
@@ -252,7 +259,7 @@ export async function POST(req: NextRequest) {
         if (userErr) {
             console.warn('[Invest API] Failed to upsert public.User (PascalCase):', userErr.message)
             // Try lowercase users
-            await supabaseServer
+            await supabase
                 .from('users')
                 .upsert({
                     id: userId,
@@ -305,14 +312,14 @@ export async function POST(req: NextRequest) {
     // 1. Fetch ALL user wallets (support multiple table schemas)
     let wallets: any[] = []
     {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabase
           .from('Wallet')
           .select('*')
           .eq('userId', userId)
       if (!error && Array.isArray(data)) wallets = data
     }
     if (!wallets || wallets.length === 0) {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabase
           .from('wallets')
           .select('id,user_id,currency,balance')
           .eq('user_id', userId)
@@ -376,7 +383,7 @@ export async function POST(req: NextRequest) {
             const currentBal = Number(wallet.balance)
             const newBal = currentBal - takeNative
             
-            const { error: updateError } = await supabaseServer
+            const { error: updateError } = await supabase
               .from('Wallet')
               .update({ balance: newBal })
               .eq('id', wallet.id)
@@ -384,7 +391,7 @@ export async function POST(req: NextRequest) {
             if (updateError) {
                  // Try lowercase fallback if Wallet table missing
                  if (updateError.code === '42P01' || updateError.message.includes('relation')) {
-                     const { error: lowError } = await supabaseServer
+                     const { error: lowError } = await supabase
                         .from('wallets')
                         .update({ balance: newBal })
                         .eq('id', wallet.id)
@@ -398,7 +405,7 @@ export async function POST(req: NextRequest) {
             deductedWallets.push({ id: wallet.id, amountNative: takeNative, currency: wallet.currency })
 
             // Log Wallet Transaction
-            await supabaseServer.from('WalletTransaction').insert({
+            await supabase.from('WalletTransaction').insert({
                 walletId: wallet.id,
                 amount: takeNative,
                 type: 'DEBIT',
@@ -416,7 +423,7 @@ export async function POST(req: NextRequest) {
           const planSlug = String(plan.slug || planId)
           // Prefer lowercase snake_case table which matches README schema
           {
-            const resLow = await supabaseServer
+            const resLow = await supabase
               .from('investments')
               .insert({
                 user_id: userId,
@@ -440,7 +447,7 @@ export async function POST(req: NextRequest) {
 
             {
               // Try to find plan by name since slug column might not exist
-              const { data: dbPlan } = await supabaseServer
+              const { data: dbPlan } = await supabase
                 .from('InvestmentPlan')
                 .select('*')
                 .eq('name', pName)
@@ -459,7 +466,7 @@ export async function POST(req: NextRequest) {
             const durationDays = plan.duration || plan.minDurationDays || 30
             const startDate = new Date()
             
-            const res = await supabaseServer
+            const res = await supabase
               .from('Investment')
               .insert({
                 id: invId,
@@ -485,7 +492,7 @@ export async function POST(req: NextRequest) {
           // 5. Create Transaction Record
           let trxError: any = null
           {
-            const { error } = await supabaseServer.from('Transaction').insert({
+            const { error } = await supabase.from('Transaction').insert({
                 userId,
                 investmentId: inv.id,
                 type: 'WITHDRAWAL',
@@ -508,7 +515,7 @@ export async function POST(req: NextRequest) {
             trxError = error
           }
           if (trxError) {
-            await supabaseServer.from('transactions').insert({
+            await supabase.from('transactions').insert({
               user_id: userId,
               type: 'WITHDRAWAL',
               amount: amountUSD,
@@ -530,7 +537,7 @@ export async function POST(req: NextRequest) {
           // 6. Notify user and broadcast SSE so dashboards refresh instantly
           try {
             const now = new Date().toISOString()
-            const { data: notif } = await supabaseServer
+            const { data: notif } = await supabase
               .from('Notification')
               .insert({
                 userId,
@@ -563,17 +570,17 @@ export async function POST(req: NextRequest) {
           for (const w of deductedWallets) {
               try {
                   // Fetch fresh balance to be safe
-                  const { data: freshW } = await supabaseServer.from('Wallet').select('balance').eq('id', w.id).maybeSingle()
+                  const { data: freshW } = await supabase.from('Wallet').select('balance').eq('id', w.id).maybeSingle()
                   
                   if (freshW) {
                       const refundedBal = Number(freshW.balance) + w.amountNative
-                      await supabaseServer.from('Wallet').update({ balance: refundedBal }).eq('id', w.id)
+                      await supabase.from('Wallet').update({ balance: refundedBal }).eq('id', w.id)
                   } else {
                       // Try lowercase
-                       const { data: freshLow } = await supabaseServer.from('wallets').select('balance').eq('id', w.id).maybeSingle()
+                       const { data: freshLow } = await supabase.from('wallets').select('balance').eq('id', w.id).maybeSingle()
                        if (freshLow) {
                            const refundedBal = Number(freshLow.balance) + w.amountNative
-                           await supabaseServer.from('wallets').update({ balance: refundedBal }).eq('id', w.id)
+                           await supabase.from('wallets').update({ balance: refundedBal }).eq('id', w.id)
                        }
                   }
                   console.log(`[Invest API] Rollback: Refunded ${w.amountNative} ${w.currency} to wallet ${w.id}`)
@@ -596,7 +603,7 @@ export async function POST(req: NextRequest) {
     let inv: any = null
     let invError: any = null
     {
-      const resLow = await supabaseServer
+      const resLow = await supabase
         .from('investments')
         .insert({
           user_id: userId,
@@ -616,7 +623,7 @@ export async function POST(req: NextRequest) {
       
       if (!dbPlanId || !/^[0-9a-f]{8}-|^[a-z0-9]{20,}/i.test(dbPlanId)) {
           // If plan.id is missing or looks like a slug, try to resolve the real ID again
-          const { data: dbPlan } = await supabaseServer
+          const { data: dbPlan } = await supabase
             .from('InvestmentPlan')
             .select('id,slug')
             .eq('slug', slug)
@@ -627,7 +634,7 @@ export async function POST(req: NextRequest) {
       if (!dbPlanId) {
           console.error('[Invest API] Cannot resolve Plan ID for foreign key. Aborting PascalCase insert for PENDING investment.')
       } else {
-        const res = await supabaseServer
+        const res = await supabase
           .from('Investment')
           .insert({
             userId,
@@ -661,7 +668,7 @@ export async function POST(req: NextRequest) {
     }
 
     {
-      const { error } = await supabaseServer.from('Transaction').insert({
+      const { error } = await supabase.from('Transaction').insert({
           userId,
           investmentId: inv.id,
           type: 'DEPOSIT',
@@ -681,7 +688,7 @@ export async function POST(req: NextRequest) {
           updatedAt: new Date().toISOString()
       })
       if (error) {
-        await supabaseServer.from('transactions').insert({
+        await supabase.from('transactions').insert({
           user_id: userId,
           type: 'DEPOSIT',
           amount: amountUSD,

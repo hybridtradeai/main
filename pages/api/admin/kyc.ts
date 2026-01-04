@@ -6,6 +6,9 @@ import { supabaseServer } from '../../../lib/supabaseServer'
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   const admin = await requireAdmin(req)
   if (!admin.ok) return res.status(401).json({ error: admin.error || 'unauthorized' })
 
@@ -14,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const files = String((req.query as any)?.files || '') === '1'
     if (files && userId) {
       try {
-        const bucket = (supabaseServer.storage as any).from('kyc')
+        const bucket = (supabase.storage as any).from('kyc')
         const listRes = await bucket.list(userId, { limit: 20 })
         const entries = Array.isArray(listRes.data) ? listRes.data : []
         
@@ -65,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Fetch without email first to avoid schema differences
     // Try PascalCase Profile first
     let items: any[] = []
-    const { data: d1, error: e1 } = await supabaseServer.from('Profile').select('*')
+    const { data: d1, error: e1 } = await supabase.from('Profile').select('*')
     
     if (!e1 && d1) {
         items = d1.map((p: any) => ({
@@ -78,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }))
     } else if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
         // Fallback to lowercase profiles
-        const { data: d2, error: e2 } = await supabaseServer.from('profiles').select('*')
+        const { data: d2, error: e2 } = await supabase.from('profiles').select('*')
         if (e2) return res.status(500).json({ error: e2.message || 'list_failed' })
         items = d2 || []
     } else {
@@ -87,7 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Enrich with email via Admin API
     try {
-      const adminRes: any = await (supabaseServer as any).auth?.admin?.listUsers?.({ page: 1, perPage: 1000 })
+      const adminRes: any = await (supabase as any).auth?.admin?.listUsers?.({ page: 1, perPage: 1000 })
       const users = adminRes?.data?.users || adminRes?.users || []
       const map = new Map<string, string>()
       for (const u of users) {
@@ -125,7 +128,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (status === 'rejected') pascalUpdates.kycRejectReason = reason
       if (typeof level === 'number') pascalUpdates.kycLevel = level
       
-      const { data: u1, error: e1 } = await supabaseServer
+      const { data: u1, error: e1 } = await supabase
         .from('Profile')
         .update(pascalUpdates)
         .eq('userId', userId)
@@ -144,7 +147,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const full: any = { ...minimal, ...optional }
           
           // Try update existing
-          const { data: u2, error: e2 } = await supabaseServer
+          const { data: u2, error: e2 } = await supabase
             .from('profiles')
             .update(full)
             .eq('user_id', userId)
@@ -155,7 +158,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               updated = true
           } else {
               // Try upsert if update failed (though usually profiles should exist)
-              const { data: u3, error: e3 } = await supabaseServer
+              const { data: u3, error: e3 } = await supabase
                 .from('profiles')
                 .upsert({ user_id: userId, ...full }, { onConflict: 'user_id' })
                 .select()
@@ -189,10 +192,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const notifData = { id: crypto.randomUUID(), userId: userId, type: 'kyc_status', title, message, read: false, createdAt: new Date().toISOString() }
     
     let notif: any = null
-    const { data: n1, error: nErr1 } = await supabaseServer.from('Notification').insert(notifData).select().single()
+    const { data: n1, error: nErr1 } = await supabase.from('Notification').insert(notifData).select().single()
     
     if (nErr1 && (nErr1.message.includes('relation "public.Notification" does not exist') || nErr1.code === '42P01')) {
-         const { data: n2 } = await supabaseServer.from('notifications').insert({
+         const { data: n2 } = await supabase.from('notifications').insert({
              ...notifData,
              user_id: notifData.userId,
              created_at: notifData.createdAt

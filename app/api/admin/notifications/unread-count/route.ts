@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -8,6 +10,8 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const type = url.searchParams.get('type')
   
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+
   // Total count
   let total = 0
   let query = supabaseServer.from('Notification').select('*', { count: 'exact', head: true }).eq('read', false)

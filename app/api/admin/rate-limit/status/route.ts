@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { requireRole } from '@lib/requireRole'
 import { redis } from '@lib/redis'
@@ -9,6 +11,8 @@ export async function GET(req: NextRequest) {
   const scope = String(url.searchParams.get('scope') || 'admin')
   const id = url.searchParams.get('id')
   const prefix = scope === 'user' ? 'rl:user:' : 'rl:admin:'
+  if (!redis) return new Response(JSON.stringify({ error: 'redis_disabled' }), { status: 503 })
+
   if (id) {
     const key = `${prefix}${id}`
     const h = await redis.hgetall(key)

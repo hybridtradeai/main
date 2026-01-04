@@ -12,6 +12,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
   if (!(await limiter(req, res, 'admin-approve-credit'))) return
 
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   const admin = await requireAdmin(req)
   if (!admin.ok || !admin.userId) return res.status(403).json({ error: admin.error || 'forbidden' })
   const approverId = admin.userId
@@ -23,10 +26,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Fetch action from Supabase (replacing Prisma)
     // Try PascalCase
     let action: any = null
-    const { data: act1, error: err1 } = await supabaseServer.from('AdminAction').select('*').eq('id', actionId).maybeSingle()
+    const { data: act1, error: err1 } = await supabase.from('AdminAction').select('*').eq('id', actionId).maybeSingle()
     
     if (err1 && (err1.message.includes('relation') || err1.code === '42P01')) {
-        const { data: act2 } = await supabaseServer.from('admin_actions').select('*').eq('id', actionId).maybeSingle()
+        const { data: act2 } = await supabase.from('admin_actions').select('*').eq('id', actionId).maybeSingle()
         if (act2) action = { ...act2, userId: act2.user_id, approvedBy: act2.approved_by, approvedAt: act2.approved_at }
     } else if (act1) {
         action = act1
@@ -44,7 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let walletId: string | undefined
     let currentAmount = 0
     
-    const { data: existing, error: wErr1 } = await supabaseServer
+    const { data: existing, error: wErr1 } = await supabase
       .from('Wallet')
       .select('id,balance')
       .eq('userId', userId)
@@ -54,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let useLowerWallet = false
     if (wErr1 && (wErr1.message.includes('relation') || wErr1.code === '42P01')) {
         useLowerWallet = true
-        const { data: ex2 } = await supabaseServer
+        const { data: ex2 } = await supabase
             .from('wallets')
             .select('id,balance')
             .eq('user_id', userId)
@@ -71,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!walletId) {
       if (useLowerWallet) {
-          const { data: inserted, error: insertErr } = await supabaseServer
+          const { data: inserted, error: insertErr } = await supabase
             .from('wallets')
             .insert({ user_id: userId, currency, balance: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
             .select()
@@ -79,7 +82,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (insertErr) throw new Error('wallet_create_failed')
           walletId = inserted?.id
       } else {
-          const { data: inserted, error: insertErr } = await supabaseServer
+          const { data: inserted, error: insertErr } = await supabase
             .from('Wallet')
             .insert({ userId: userId, currency, balance: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
             .select()
@@ -87,7 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           if (insertErr && (insertErr.message.includes('relation') || insertErr.code === '42P01')) {
               // Retry lower
-               const { data: ins2, error: insErr2 } = await supabaseServer
+               const { data: ins2, error: insErr2 } = await supabase
                 .from('wallets')
                 .insert({ user_id: userId, currency, balance: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
                 .select()
@@ -108,13 +111,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const newAmount = Number((currentAmount + amountNum).toFixed(8))
     
     if (useLowerWallet) {
-        const { error: updateErr } = await supabaseServer
+        const { error: updateErr } = await supabase
           .from('wallets')
           .update({ balance: newAmount, updated_at: new Date().toISOString() })
           .eq('id', walletId!)
         if (updateErr) throw new Error('wallet_update_failed')
     } else {
-        const { error: updateErr } = await supabaseServer
+        const { error: updateErr } = await supabase
           .from('Wallet')
           .update({ balance: newAmount, updatedAt: new Date().toISOString() })
           .eq('id', walletId!)
@@ -128,7 +131,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // WalletTransaction
     // Try PascalCase
     let txn: any = null
-    const { data: wtx, error: wtErr } = await supabaseServer.from('WalletTransaction').insert({
+    const { data: wtx, error: wtErr } = await supabase.from('WalletTransaction').insert({
         id: txnId,
         walletId: walletId!,
         amount: amountNum,
@@ -141,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }).select().single()
     
     if (wtErr && (wtErr.message.includes('relation') || wtErr.code === '42P01')) {
-        const { data: wtx2 } = await supabaseServer.from('wallet_transactions').insert({
+        const { data: wtx2 } = await supabase.from('wallet_transactions').insert({
             id: txnId,
             wallet_id: walletId!,
             amount: amountNum,
@@ -159,13 +162,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Update AdminAction status
     if (err1 && (err1.message.includes('relation') || err1.code === '42P01')) {
-         await supabaseServer.from('admin_actions').update({
+         await supabase.from('admin_actions').update({
              status: 'COMPLETED',
              approved_by: approverId,
              approved_at: new Date().toISOString()
          }).eq('id', action.id)
     } else {
-         await supabaseServer.from('AdminAction').update({
+         await supabase.from('AdminAction').update({
              status: 'COMPLETED',
              approvedBy: approverId,
              approvedAt: new Date().toISOString()

@@ -9,6 +9,8 @@ export async function requireAdmin(req: NextApiRequest): Promise<AdminCheck> {
     const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
     if (!token) return { ok: false, error: 'Missing Authorization bearer token' };
 
+    if (!supabaseServer) return { ok: false, error: 'Server configuration error' };
+
     const { data: userData, error: userErr } = await supabaseServer.auth.getUser(token);
     if (userErr || !userData?.user?.id) {
         console.error('AdminAuth Token Verification Failed:', userErr?.message || 'No user data', 'Token start:', token.substring(0, 10))

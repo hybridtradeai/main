@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 
@@ -11,10 +12,15 @@ const DISPLAY_NAME: Record<string, string> = {
 
 export async function GET(req: NextRequest) {
   try {
+    if (!supabaseServer) {
+        return NextResponse.json({ error: 'server_configuration_error' }, { status: 500 })
+    }
+    const supabase = supabaseServer
+
     const now = Date.now()
     const dayAgoISO = new Date(now - 24 * 60 * 60 * 1000).toISOString()
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('TradeLog')
       .select('streamId, profitPct, simulatedAt')
       .gte('simulatedAt', dayAgoISO)
@@ -50,4 +56,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'internal_error', details: e?.message || 'error' }, { status: 500 })
   }
 }
-

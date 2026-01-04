@@ -22,11 +22,13 @@ export class InvestmentRunner {
    * Uses deterministic simulation for past dates to ensure consistency.
    */
   async runInvestmentSimulation(investmentId: string): Promise<DailyPerformance[]> {
+    if (!supabaseServer) throw new Error('Supabase not configured');
+    const supabase = supabaseServer;
     let investment: any = null;
     let plan: any = null;
 
     // Try PascalCase first
-    const { data: invPascal, error: errPascal } = await supabaseServer
+    const { data: invPascal, error: errPascal } = await supabase
       .from('Investment')
       .select('*, plan:InvestmentPlan(*)')
       .eq('id', investmentId)
@@ -37,7 +39,7 @@ export class InvestmentRunner {
       plan = Array.isArray(invPascal.plan) ? invPascal.plan[0] : invPascal.plan;
     } else {
       // Fallback to lowercase
-      const { data: invLower, error: errLower } = await supabaseServer
+      const { data: invLower, error: errLower } = await supabase
         .from('investments')
         .select('*, plan:investment_plans(*)')
         .eq('id', investmentId)
@@ -46,7 +48,7 @@ export class InvestmentRunner {
       if (errLower || !invLower) {
          // If join fails, try fetching separately or throw
          // Try fetching investment only first
-         const { data: invLower2, error: errLower2 } = await supabaseServer
+         const { data: invLower2, error: errLower2 } = await supabase
             .from('investments')
             .select('*')
             .eq('id', investmentId)
@@ -62,7 +64,7 @@ export class InvestmentRunner {
          
          // Fetch plan separately
          if (invLower2.plan_id) {
-             const { data: pLower } = await supabaseServer
+             const { data: pLower } = await supabase
                 .from('investment_plans')
                 .select('*')
                 .eq('id', invLower2.plan_id)

@@ -14,6 +14,9 @@ function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
   if (!(await limiter(req, res, 'kyc-upload'))) return
 
@@ -21,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const auth = String(req.headers.authorization || '')
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     if (!token) return res.status(401).json({ error: 'unauthorized' })
-    const { data: userData, error: userErr } = await supabaseServer.auth.getUser(token)
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token)
     if (userErr || !userData?.user?.id) return res.status(401).json({ error: 'invalid_token' })
     const userId = String(userData.user.id)
 
@@ -39,23 +42,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const bucketName = 'kyc'
     try {
-      const info: any = await (supabaseServer.storage as any).getBucket?.(bucketName)
+      const info: any = await (supabase.storage as any).getBucket?.(bucketName)
       const exists = Boolean(info?.data?.name === bucketName)
       if (!exists) {
-        await (supabaseServer.storage as any).createBucket?.(bucketName, {
+        await (supabase.storage as any).createBucket?.(bucketName, {
           public: false,
           fileSizeLimit: '10MB',
           allowedMimeTypes: ['image/jpeg','image/png','application/pdf','application/json','text/plain'],
         })
       } else {
-        await (supabaseServer.storage as any).updateBucket?.(bucketName, {
+        await (supabase.storage as any).updateBucket?.(bucketName, {
           public: false,
           fileSizeLimit: '10MB',
           allowedMimeTypes: ['image/jpeg','image/png','application/pdf','application/json','text/plain'],
         })
       }
     } catch {}
-    const bucket = supabaseServer.storage.from(bucketName)
+    const bucket = supabase.storage.from(bucketName)
 
     const { mime: idMime, buffer: idBuf } = parseDataUrl(idDataUrl)
     const { mime: nMime, buffer: nBuf } = parseDataUrl(selfieNeutralDataUrl)

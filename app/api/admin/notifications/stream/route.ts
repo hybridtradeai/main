@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -12,7 +14,11 @@ function sse(data: any, id?: string, event?: string) {
 
 export async function GET(req: NextRequest) {
   const { user, error } = await requireRole('ADMIN')
-  if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
+
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+
+  const supabase = supabaseServer
   const adminId = String(user.id)
   const lastEventId = new URL(req.url).searchParams.get('lastEventId')
   const lastDate = lastEventId ? new Date(lastEventId) : null
@@ -26,7 +32,7 @@ export async function GET(req: NextRequest) {
         
         // Fetch globals
         // Try PascalCase
-        let { data: globals, error: gErr } = await supabaseServer
+        let { data: globals, error: gErr } = await supabase
             .from('GlobalNotification')
             .select('*')
             .gt('createdAt', isoDate)
@@ -34,7 +40,7 @@ export async function GET(req: NextRequest) {
             .limit(100)
             
         if (gErr && (gErr.message.includes('relation') || gErr.code === '42P01')) {
-            const { data: g2 } = await supabaseServer
+            const { data: g2 } = await supabase
                 .from('global_notifications')
                 .select('*')
                 .gt('created_at', isoDate)
@@ -52,7 +58,7 @@ export async function GET(req: NextRequest) {
 
         // Fetch personals
         // Try PascalCase
-        let { data: personals, error: pErr } = await supabaseServer
+        let { data: personals, error: pErr } = await supabase
             .from('Notification')
             .select('*')
             .eq('userId', adminId)
@@ -61,7 +67,7 @@ export async function GET(req: NextRequest) {
             .limit(100)
             
         if (pErr && (pErr.message.includes('relation') || pErr.code === '42P01')) {
-            const { data: p2 } = await supabaseServer
+            const { data: p2 } = await supabase
                 .from('notifications')
                 .select('*')
                 .eq('user_id', adminId)

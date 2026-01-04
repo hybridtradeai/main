@@ -3,6 +3,7 @@ import { supabaseServer } from './supabaseServer';
 export type KycStatus = 'approved' | 'pending' | 'rejected' | null;
 
 export async function getKycStatus(userId: string): Promise<KycStatus> {
+  if (!supabaseServer) return null;
   const { data, error } = await supabaseServer
     .from('profiles')
     .select('kyc_status')

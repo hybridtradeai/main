@@ -7,8 +7,10 @@ const CONCURRENCY = Math.max(1, Number(process.env.BROADCAST_WORKER_CONCURRENCY 
 
 function logToRedis(client: any, jobId: string, entry: any) {
   try {
-    client.lpush(`job_logs:broadcast:${jobId}`, JSON.stringify(entry))
-    client.ltrim(`job_logs:broadcast:${jobId}`, 0, 500)
+    if (client) {
+      client.lpush(`job_logs:broadcast:${jobId}`, JSON.stringify(entry))
+      client.ltrim(`job_logs:broadcast:${jobId}`, 0, 500)
+    }
   } catch {}
 }
 
@@ -22,7 +24,9 @@ async function processJob(job: Job) {
     const globalNotificationId = job.data?.globalNotificationId
     if (!globalNotificationId) throw new Error('missing globalNotificationId')
 
-    const { supabaseServer } = await import('../lib/supabaseServer')
+    const { supabaseServer: _supabaseServer } = await import('../lib/supabaseServer')
+    if (!_supabaseServer) throw new Error('Supabase not configured')
+    const supabaseServer = _supabaseServer
     
     // 1. Fetch GlobalNotification
     let g: any = null
@@ -171,11 +175,11 @@ async function processJob(job: Job) {
     }
 
     logToRedis(client, jobId, { ts: Date.now(), status: 'completed', processed })
-    client.disconnect()
+    if (client) client.disconnect()
     return { ok: true, processed }
   } catch (err) {
     logToRedis(client, jobId, { ts: Date.now(), status: 'failed', error: String(err) })
-    try { client.disconnect() } catch {}
+    try { if (client) client.disconnect() } catch {}
     throw err
   }
 }
@@ -185,6 +189,10 @@ let worker: Worker | null = null
 export function startBroadcastWorker() {
   if (worker) return worker
   if (process.env.NODE_ENV === 'test') return null as any
+  
+  // Disable on Vercel to prevent ECONNREFUSED
+  if (process.env.VERCEL || process.env.DISABLE_REDIS === 'true') return null as any
+
   worker = new Worker('broadcast', async (job: Job) => processJob(job), { connection, concurrency: CONCURRENCY })
   worker.on('failed', (job, err) => console.error('broadcast job failed', job?.id, err))
   return worker

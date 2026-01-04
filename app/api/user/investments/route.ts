@@ -1,10 +1,15 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '../../../../src/lib/requireRole'
 import { supabaseServer } from '../../../../src/lib/supabaseServer'
 
 export async function GET(req: NextRequest) {
   const { user, error } = await requireRole('USER', req)
-  if (error) return NextResponse.json({ error }, { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return NextResponse.json({ error: error || 'unauthenticated' }, { status: error === 'unauthenticated' ? 401 : 403 })
+
+  if (!supabaseServer) return NextResponse.json({ error: 'server_configuration_error' }, { status: 500 })
+  const supabase = supabaseServer
   
   const url = new URL(req.url)
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
@@ -12,7 +17,7 @@ export async function GET(req: NextRequest) {
   const status = String(url.searchParams.get('status') || '')
   
   // Prefer lowercase snake_case table first (matches README schema)
-  let queryLow = supabaseServer
+  let queryLow = supabase
       .from('investments')
       .select('*, plan:investment_plans(*)', { count: 'exact' })
       .eq('user_id', user.id)
@@ -26,7 +31,7 @@ export async function GET(req: NextRequest) {
   // Fallback to PascalCase tables if primary fails
   if (dbError) {
     console.warn('[Investments API] Lowercase table fetch failed, trying PascalCase:', dbError.message)
-    let query = supabaseServer
+    let query = supabase
       .from('Investment')
       .select('*, plan:InvestmentPlan(*)', { count: 'exact' })
       .eq('userId', user.id)

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -27,17 +29,21 @@ function buildMerkle(leaves: string[]) {
 export async function GET(req: NextRequest) {
   const { user, error } = await requireRole('USER', req)
   if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+
   try {
     // Fallback logic for wallets
     let wallets: any[] = []
-    const { data: w1, error: e1 } = await supabaseServer
+    const { data: w1, error: e1 } = await supabase
       .from('Wallet')
       .select('userId, balance')
       .eq('currency', 'USD')
       .order('userId', { ascending: true })
     
     if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
-      const { data: w2 } = await supabaseServer
+      const { data: w2 } = await supabase
         .from('wallets')
         .select('user_id, balance')
         .eq('currency', 'USD')

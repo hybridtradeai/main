@@ -3,16 +3,21 @@ import { supabaseServer, supabaseServiceReady } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
 import { publish } from '@lib/sse'
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const { user, error } = await requireRole('USER', req)
-  if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
   
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+
   // Robust fetch with fallback and manual join if needed
   let tickets = []
   let isSnake = false
 
   // 1. Try PascalCase
-  const { data: t1, error: tErr1 } = await supabaseServer
+  const { data: t1, error: tErr1 } = await supabase
     .from('SupportTicket')
     .select('id,userId,subject,status,createdAt, Reply(id,body,isAdmin,createdAt)')
     .eq('userId', String(user.id))
@@ -38,7 +43,7 @@ export async function GET(req: NextRequest) {
   // 2. Fallback: Manual Join or snake_case
   // Try PascalCase without relations first (if relation failed)
   let tData = []
-  const { data: tRaw, error: tRawErr } = await supabaseServer
+  const { data: tRaw, error: tRawErr } = await supabase
       .from('SupportTicket')
       .select('id,userId,subject,status,createdAt')
       .eq('userId', String(user.id))
@@ -48,7 +53,7 @@ export async function GET(req: NextRequest) {
       tData = tRaw
   } else {
       // Try snake_case
-      const { data: t2, error: tErr2 } = await supabaseServer
+      const { data: t2, error: tErr2 } = await supabase
         .from('support_tickets')
         .select('id,user_id,subject,status,created_at')
         .eq('user_id', String(user.id))
@@ -65,7 +70,7 @@ export async function GET(req: NextRequest) {
   
   if (ticketIds.length > 0) {
       // Try 'Reply'
-      const { data: r1, error: rErr1 } = await supabaseServer
+      const { data: r1, error: rErr1 } = await supabase
         .from('Reply')
         .select('id,ticketId,body,isAdmin,createdAt')
         .in('ticketId', ticketIds)
@@ -83,7 +88,7 @@ export async function GET(req: NextRequest) {
           })
       } else {
           // Try 'replies'
-          const response = await supabaseServer
+          const response = await supabase
             .from('replies')
             .select('id,ticket_id,body,is_admin,created_at')
             .in('ticket_id', ticketIds)
@@ -121,7 +126,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { user, error } = await requireRole('USER', req)
-  if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
+  
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+
   const body = await req.json().catch(() => ({}))
   const ticketId = String(body?.ticketId || '')
   const replyBody = String(body?.body || '')
@@ -131,14 +140,14 @@ export async function POST(req: NextRequest) {
   if (ticketId && replyBody) {
     // Try PascalCase first
     let ticket: any = null
-    const { data: t1, error: tErr1 } = await supabaseServer
+    const { data: t1, error: tErr1 } = await supabase
       .from('SupportTicket')
       .select('id,userId,status')
       .eq('id', ticketId)
       .maybeSingle()
 
     if (tErr1 && (tErr1.message.includes('relation') || tErr1.code === '42P01' || tErr1.message.includes('schema cache'))) {
-      const { data: t2, error: tErr2 } = await supabaseServer
+      const { data: t2, error: tErr2 } = await supabase
         .from('support_tickets')
         .select('id,user_id,status')
         .eq('id', ticketId)
@@ -155,12 +164,12 @@ export async function POST(req: NextRequest) {
     if (String(ticket.status) === 'closed') return new Response(JSON.stringify({ error: 'ticket_closed' }), { status: 409 })
 
     // Try PascalCase for Reply
-    const { error: mErr1 } = await supabaseServer
+    const { error: mErr1 } = await supabase
       .from('Reply')
       .insert({ ticketId: ticketId, body: replyBody, isAdmin: false })
 
     if (mErr1 && (mErr1.message.includes('relation') || mErr1.code === '42P01' || mErr1.message.includes('schema cache'))) {
-      const { error: insErr } = await supabaseServer.from('replies').insert({ ticket_id: ticketId, body: replyBody, is_admin: false })
+      const { error: insErr } = await supabase.from('replies').insert({ ticket_id: ticketId, body: replyBody, is_admin: false })
       if (insErr) return new Response(JSON.stringify({ error: String(insErr?.message || 'reply_failed') }), { status: 500 })
     } else if (mErr1) {
       return new Response(JSON.stringify({ error: String(mErr1?.message || 'reply_failed') }), { status: 500 })
@@ -171,11 +180,11 @@ export async function POST(req: NextRequest) {
   }
   if (!subject || !message) return new Response(JSON.stringify({ error: 'invalid' }), { status: 400 })
   const email = String((user as any)?.email || '')
-  try { await supabaseServer.from('profiles').upsert({ user_id: String(user.id), email: email || null }, { onConflict: 'user_id' }) } catch {}
+  try { await supabase.from('profiles').upsert({ user_id: String(user.id), email: email || null }, { onConflict: 'user_id' }) } catch {}
   
   // Try PascalCase for Create Ticket
   let ticket: any = null
-  const { data: t1, error: tErr1 } = await supabaseServer
+  const { data: t1, error: tErr1 } = await supabase
     .from('SupportTicket')
     .insert({ userId: String(user.id), subject, status: 'open' })
     .select()
@@ -183,7 +192,7 @@ export async function POST(req: NextRequest) {
   
   if (tErr1 && (tErr1.message.includes('relation') || tErr1.code === '42P01' || tErr1.message.includes('schema cache'))) {
     // Fallback
-    const { data: t2, error: tErr2 } = await supabaseServer
+    const { data: t2, error: tErr2 } = await supabase
       .from('support_tickets')
       .insert({ user_id: String(user.id), subject, status: 'open' })
       .select()
@@ -197,10 +206,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Insert initial reply
-  const { error: repErr1 } = await supabaseServer.from('Reply').insert({ ticketId: String(ticket.id), body: message, isAdmin: false })
+  const { error: repErr1 } = await supabase.from('Reply').insert({ ticketId: String(ticket.id), body: message, isAdmin: false })
   
   if (repErr1 && (repErr1.message.includes('relation') || repErr1.code === '42P01' || repErr1.message.includes('schema cache'))) {
-      const { error: repErr2 } = await supabaseServer.from('replies').insert({ ticket_id: String(ticket.id), body: message, is_admin: false })
+      const { error: repErr2 } = await supabase.from('replies').insert({ ticket_id: String(ticket.id), body: message, is_admin: false })
       if (repErr2) return new Response(JSON.stringify({ error: String(repErr2?.message || 'reply_failed') }), { status: 500 })
   } else if (repErr1) {
       return new Response(JSON.stringify({ error: String(repErr1?.message || 'reply_failed') }), { status: 500 })

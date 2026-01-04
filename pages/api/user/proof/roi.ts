@@ -22,15 +22,18 @@ function weightedRoiPct(planId: string, streams: Record<string, number> | null):
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   try {
     const auth = String(req.headers.authorization || '')
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     if (!token) return res.status(401).json({ error: 'unauthorized' })
-    const { data: userData, error: userErr } = await supabaseServer.auth.getUser(token)
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token)
     if (userErr || !userData?.user?.id) return res.status(401).json({ error: 'invalid_token' })
     const userId = String(userData.user.id)
 
-    const { data: inv } = await supabaseServer
+    const { data: inv } = await supabase
       .from('investments')
       .select('amount_usd,plan_id,status')
       .eq('user_id', userId)
@@ -39,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const items = Array.isArray(inv) ? inv as any[] : []
     const totalInvestedUSD = items.reduce((s, it) => s + Number(it.amount_usd || 0), 0)
 
-    const { data: perfRow } = await supabaseServer
+    const { data: perfRow } = await supabase
       .from('performance')
       .select('week_ending,stream_rois')
       .order('week_ending', { ascending: false })

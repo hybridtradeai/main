@@ -9,13 +9,16 @@ function toNumber(x: any) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   try {
     const since1h = new Date(Date.now() - 3600_000).toISOString()
     const since24h = new Date(Date.now() - 24 * 3600_000).toISOString()
 
     let usersJoined = 0
     try {
-      const { count } = await supabaseServer
+      const { count } = await supabase
         .from('profiles')
         .select('id', { count: 'exact', head: true })
       usersJoined = Number(count || 0)
@@ -23,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let recentTx: any[] = []
     try {
-      const { data } = await supabaseServer
+      const { data } = await supabase
         .from('Transaction')
         .select('userId,type,amount,createdAt')
         .gte('createdAt', since1h)
@@ -43,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let activeTradersOnline = 0
     try {
       if (activeUserIds.length) {
-        const { data } = await supabaseServer
+        const { data } = await supabase
           .from('Investment')
           .select('userId,status')
           .in('userId', activeUserIds)
@@ -65,9 +68,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let presenceCount = activeTradersOnline
     try {
-      const now = Date.now()
-      const c = await redis.zcount('presence:users', now - 60_000, '+inf')
-      presenceCount = Math.max(Number(c || 0), activeTradersOnline)
+      if (redis) {
+        const now = Date.now()
+        const c = await redis.zcount('presence:users', now - 60_000, '+inf')
+        presenceCount = Math.max(Number(c || 0), activeTradersOnline)
+      }
     } catch {}
 
     const payload = {

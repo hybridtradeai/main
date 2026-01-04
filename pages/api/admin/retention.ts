@@ -4,6 +4,8 @@ import { supabaseServer } from '../../../src/lib/supabaseServer'
 import { logInfo, logError } from '../../../src/lib/observability/logger'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
   const check = await requireAdmin(req)
   if (!check.ok) return res.status(403).json({ error: 'forbidden' })
@@ -16,14 +18,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     let count = 0
     // Try PascalCase
-    const { count: c1, error: e1 } = await supabaseServer
+    const { count: c1, error: e1 } = await supabase
       .from('NotificationDelivery')
       .delete({ count: 'exact' })
       .lt('deliveredAt', cutoff.toISOString())
 
     if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
         // Fallback
-        const { count: c2, error: e2 } = await supabaseServer
+        const { count: c2, error: e2 } = await supabase
           .from('notification_deliveries')
           .delete({ count: 'exact' })
           .lt('delivered_at', cutoff.toISOString())

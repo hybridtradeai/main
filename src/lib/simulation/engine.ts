@@ -60,20 +60,23 @@ export class SimulationEngine {
     // Fetch active investments for weighted analysis
     let activeInvestments: any[] = [];
     try {
-        const { data: i1, error: e1 } = await supabaseServer.from('Investment').select('*, plan:InvestmentPlan(*)').eq('status', 'ACTIVE');
-        
-        if (!e1 && i1) {
-            activeInvestments = i1;
-        } else if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
-             const { data: i2 } = await supabaseServer.from('investments').select('*, plan:investment_plans(*)').eq('status', 'ACTIVE');
-             if (i2) {
-                 activeInvestments = i2.map((inv: any) => ({
-                     ...inv,
-                     userId: inv.user_id,
-                     planId: inv.plan_id,
-                     plan: Array.isArray(inv.plan) ? inv.plan[0] : inv.plan
-                 }));
-             }
+        if (supabaseServer) {
+            const supabase = supabaseServer
+            const { data: i1, error: e1 } = await supabase.from('Investment').select('*, plan:InvestmentPlan(*)').eq('status', 'ACTIVE');
+            
+            if (!e1 && i1) {
+                activeInvestments = i1;
+            } else if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
+                 const { data: i2 } = await supabase.from('investments').select('*, plan:investment_plans(*)').eq('status', 'ACTIVE');
+                 if (i2) {
+                     activeInvestments = i2.map((inv: any) => ({
+                         ...inv,
+                         userId: inv.user_id,
+                         planId: inv.plan_id,
+                         plan: Array.isArray(inv.plan) ? inv.plan[0] : inv.plan
+                     }));
+                 }
+            }
         }
     } catch (e) {
       console.warn('Simulation: Could not fetch active investments, using defaults.', e);

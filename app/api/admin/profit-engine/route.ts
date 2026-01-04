@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -14,6 +16,8 @@ export async function POST(req: NextRequest) {
     reserve_percent: isFinite(reserve_percent) ? String(reserve_percent) : '10',
     cycle_length_days: isFinite(cycle_length_days) ? String(cycle_length_days) : '7',
   }
+
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
   
   for (const [key, value] of Object.entries(kv)) {
     // Try PascalCase Setting table first
@@ -38,6 +42,9 @@ export async function GET(req: NextRequest) {
   const { error } = await requireRole('ADMIN')
   if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
 
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+
   let config: Record<string, number> = {
     fee_percent: 5,
     reserve_percent: 10,
@@ -45,12 +52,12 @@ export async function GET(req: NextRequest) {
   }
 
   // Try PascalCase Setting first
-  const { data, error: err } = await supabaseServer.from('Setting').select('key,value')
+  const { data, error: err } = await supabase.from('Setting').select('key,value')
   
   let rows = data
   if (err && (err.message.includes('relation "public.Setting" does not exist') || err.code === '42P01')) {
      // Fallback to lowercase
-     const { data: d2 } = await supabaseServer.from('settings').select('key,value')
+     const { data: d2 } = await supabase.from('settings').select('key,value')
      rows = d2
   }
 

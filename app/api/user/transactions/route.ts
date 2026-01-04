@@ -5,9 +5,15 @@ import { supabaseServer } from '@lib/supabaseServer'
 import { sendEmail } from '@lib/email'
 import crypto from 'crypto'
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const { user, error } = await requireRole('USER', req)
-  if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
+  
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
+
   const url = new URL(req.url)
   const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || '25')))
@@ -22,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     // 1. Try PascalCase
     {
-        let query = supabaseServer
+        let query = supabase
         .from('Transaction')
         .select('*', { count: 'exact' })
         .eq('userId', user.id)
@@ -41,7 +47,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Fallback to lowercase 'transactions' if relation missing
     if (dbError && (dbError.message?.includes('relation') || dbError.code === '42P01')) {
-        let query = supabaseServer
+        let query = supabase
         .from('transactions')
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
@@ -95,8 +101,11 @@ export async function POST(req: NextRequest) {
   console.log('[Withdrawal] Request received')
   try {
     const { user, error } = await requireRole('USER', req)
-    if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+    if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
     
+    if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+    const supabase = supabaseServer
+
     console.log('[Withdrawal] User auth:', user?.id)
 
     let body: any
@@ -119,7 +128,7 @@ export async function POST(req: NextRequest) {
         const now = new Date().toISOString()
         
         // Using "Transaction" (PascalCase) and camelCase columns
-        const { data: txn, error: txnErr } = await supabaseServer
+        const { data: txn, error: txnErr } = await supabase
             .from('Transaction')
             .insert({
                 id: newId,
@@ -157,7 +166,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 1. Optional KYC check via Supabase profiles
-        const { data: profile } = await supabaseServer
+        const { data: profile } = await supabase
             .from('profiles')
             .select('kyc_status')
             .eq('user_id', user.id)
@@ -175,16 +184,16 @@ export async function POST(req: NextRequest) {
         const netAmount = amount - fee
 
         // 3. Check Wallet (Supabase - lowercase tables/columns)
-        let { data: wallet, error: walletErr } = await supabaseServer
+        let { data: wallet, error: walletErr } = await supabase
             .from('wallets')
             .select('id,user_id,currency,balance')
             .eq('user_id', user.id)
             .eq('currency', currency)
             .maybeSingle()
         if (walletErr) {
-            const alt = await supabaseServer
+            const alt = await supabase
                 .from('Wallet')
-                .select('id,userId as user_id,currency,balance')
+                .select('id,user_id:userId,currency,balance')
                 .eq('userId', user.id)
                 .eq('currency', currency)
                 .maybeSingle()
@@ -197,7 +206,7 @@ export async function POST(req: NextRequest) {
         // Fallback to USD wallet if specific currency wallet is missing or insufficient (1:1 peg to USD)
         if ((walletErr || !wallet || Number((wallet as any).balance) < amount) && currency !== 'USD') {
             console.log('[Withdrawal] Checking USD wallet fallback...')
-            const { data: usdWallet, error: usdErr } = await supabaseServer
+            const { data: usdWallet, error: usdErr } = await supabase
                 .from('wallets')
                 .select('id,user_id,currency,balance')
                 .eq('user_id', user.id)
@@ -208,9 +217,9 @@ export async function POST(req: NextRequest) {
                 wallet = usdWallet
                 walletErr = null
             } else {
-                const altUsd = await supabaseServer
+                const altUsd = await supabase
                     .from('Wallet')
-                    .select('id,userId as user_id,currency,balance')
+                    .select('id,user_id:userId,currency,balance')
                     .eq('userId', user.id)
                     .eq('currency', 'USD')
                     .maybeSingle()
@@ -234,19 +243,19 @@ export async function POST(req: NextRequest) {
         const newId = crypto.randomUUID()
         const now = new Date().toISOString()
         try {
-            const { data: existingUser, error: userCheckErr } = await supabaseServer
+            const { data: existingUser, error: userCheckErr } = await supabase
                 .from('User')
                 .select('id')
                 .eq('id', user.id)
                 .maybeSingle()
             if (userCheckErr || !existingUser) {
-                const { data: prof } = await supabaseServer
+                const { data: prof } = await supabase
                     .from('profiles')
                     .select('email')
                     .eq('user_id', user.id)
                     .maybeSingle()
                 const email = String((prof as any)?.email || `${user.id}@users.local`)
-                await supabaseServer
+                await supabase
                     .from('User')
                     .insert({
                         id: user.id,
@@ -257,7 +266,7 @@ export async function POST(req: NextRequest) {
             }
         } catch {}
 
-        const { data: txn, error: txnErr } = await supabaseServer
+        const { data: txn, error: txnErr } = await supabase
             .from('Transaction')
             .insert({
                 id: newId,
@@ -285,7 +294,7 @@ export async function POST(req: NextRequest) {
 
         // Send Email Notification
         try {
-          const { data: profile } = await supabaseServer
+          const { data: profile } = await supabase
             .from('profiles')
             .select('email, first_name')
             .eq('user_id', user.id)
@@ -327,14 +336,14 @@ export async function POST(req: NextRequest) {
         const newBal = Number((wallet as any).balance) - amount
         let updateErr: any = null
         {
-            const upd = await supabaseServer
+            const upd = await supabase
                 .from('wallets')
                 .update({ balance: newBal, updated_at: now })
                 .eq('id', (wallet as any).id)
             updateErr = upd.error
         }
         if (updateErr) {
-            const upd2 = await supabaseServer
+            const upd2 = await supabase
                 .from('Wallet')
                 .update({ balance: newBal, updatedAt: now })
                 .eq('id', (wallet as any).id)
@@ -344,7 +353,7 @@ export async function POST(req: NextRequest) {
         if (updateErr) {
             console.error('[Withdrawal] Failed to deduct balance:', updateErr)
             if ((txn as any)?.id) {
-                await supabaseServer.from('transactions').update({ status: 'failed' }).eq('id', (txn as any).id)
+                await supabase.from('transactions').update({ status: 'failed' }).eq('id', (txn as any).id)
             }
             return new Response(JSON.stringify({ error: 'database_error', details: 'balance_update_failed' }), { status: 500 })
         }
@@ -352,7 +361,7 @@ export async function POST(req: NextRequest) {
         try {
             const details = { destinationAddress, network, fee, netAmount, method: 'crypto' }
             const wtxId = crypto.randomUUID()
-            await supabaseServer.from('WalletTransaction').insert({
+            await supabase.from('WalletTransaction').insert({
                 id: wtxId,
                 walletId: (wallet as any).id,
                 amount: amount,

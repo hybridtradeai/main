@@ -4,11 +4,14 @@ import { supabaseServer } from '@lib/supabaseServer'
 import { requireAdmin } from '../../../lib/adminAuth'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   const check = await requireAdmin(req)
   if (!check.ok) return res.status(403).json({ error: check.error || 'forbidden' })
 
   if (req.method === 'GET') {
-    const raw = await redis.get('por:published')
+    const raw = redis ? await redis.get('por:published') : null
     const cfg = raw ? JSON.parse(String(raw)) : null
     return res.status(200).json({ config: cfg })
   }
@@ -27,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       generatedAt: body.generatedAt || new Date().toISOString(),
       publishedAt: new Date().toISOString(),
     }
-    await redis.set('por:published', JSON.stringify(cfg))
+    if (redis) await redis.set('por:published', JSON.stringify(cfg))
     try {
       const adminId = String((check as any)?.userId || '')
       const audit = {
@@ -44,7 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await redis.ltrim('por:audit', 0, 499)
       try {
         // Try PascalCase first
-        const { error: e1 } = await supabaseServer
+        const { error: e1 } = await supabase
           .from('PorAudit')
           .insert({
             adminId: adminId || null,
@@ -58,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           })
 
         if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
-            await supabaseServer
+            await supabase
               .from('por_audit')
               .insert({
                 admin_id: adminId || null,

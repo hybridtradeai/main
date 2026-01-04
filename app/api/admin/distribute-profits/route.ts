@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { runBaselineCycle, runStreamDistribution } from '@lib/profit/engine'
@@ -6,6 +8,9 @@ import { requireRole } from '@lib/requireRole'
 export async function POST(req: NextRequest) {
   const { error } = await requireRole('ADMIN')
   if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+
   const url = new URL(req.url)
   const body = await req.json().catch(() => ({}))
   const dryRun = body?.dryRun === true || String(url.searchParams.get('dryRun') || '').toLowerCase() === 'true'

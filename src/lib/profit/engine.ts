@@ -46,8 +46,10 @@ function normalizeStreams(raw: Record<string, number>): Record<string, number> {
 }
 
 async function upsertReserveBuffer(currentAmountDelta: number, totalAUM: number) {
+  if (!supabaseServer) throw new Error('Supabase not configured')
+  const supabase = supabaseServer
   // Try PascalCase
-  const { data, error } = await supabaseServer.from('ReserveBuffer').select('*').eq('id', 'main').maybeSingle()
+  const { data, error } = await supabase.from('ReserveBuffer').select('*').eq('id', 'main').maybeSingle()
   
   let table = 'ReserveBuffer'
   let columns = { currentAmount: 'currentAmount', totalAUM: 'totalAUM', id: 'id' }
@@ -58,16 +60,16 @@ async function upsertReserveBuffer(currentAmountDelta: number, totalAUM: number)
   }
 
   // Check if exists
-  const { data: existing } = await supabaseServer.from(table).select('*').eq(columns.id, 'main').maybeSingle()
+  const { data: existing } = await supabase.from(table).select('*').eq(columns.id, 'main').maybeSingle()
 
   if (existing) {
       const newAmount = Number(existing[columns.currentAmount]) + currentAmountDelta
-      await supabaseServer.from(table).update({
+      await supabase.from(table).update({
           [columns.currentAmount]: newAmount,
           [columns.totalAUM]: totalAUM
       }).eq(columns.id, 'main')
   } else {
-      await supabaseServer.from(table).insert({
+      await supabase.from(table).insert({
           [columns.id]: 'main',
           [columns.currentAmount]: currentAmountDelta,
           [columns.totalAUM]: totalAUM
@@ -83,8 +85,10 @@ function getSlug(name: string) {
 }
 
 async function checkKycStatus(userId: string) {
+    if (!supabaseServer) throw new Error('Supabase not configured')
+    const supabase = supabaseServer
     // Try PascalCase Profile
-    const { data: p1, error: e1 } = await supabaseServer
+    const { data: p1, error: e1 } = await supabase
         .from('Profile')
         .select('kycStatus')
         .eq('userId', userId)
@@ -93,7 +97,7 @@ async function checkKycStatus(userId: string) {
     if (!e1 && p1) return p1.kycStatus === 'APPROVED'
 
     // Try snake_case profiles
-    const { data: p2 } = await supabaseServer
+    const { data: p2 } = await supabase
         .from('profiles')
         .select('kyc_status')
         .eq('user_id', userId)
@@ -105,8 +109,10 @@ async function checkKycStatus(userId: string) {
 }
 
 async function getActiveInvestments(week: Date) {
+    if (!supabaseServer) throw new Error('Supabase not configured')
+    const supabase = supabaseServer
     // Try PascalCase
-    const { data: d1, error: e1 } = await supabaseServer
+    const { data: d1, error: e1 } = await supabase
         .from('Investment')
         .select('*, plan:InvestmentPlan(*), user:User(*)')
         .eq('status', 'ACTIVE')
@@ -118,7 +124,7 @@ async function getActiveInvestments(week: Date) {
         investments = d1
     } else if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
         // Try lowercase
-        const { data: d2, error: e2 } = await supabaseServer
+        const { data: d2, error: e2 } = await supabase
             .from('investments')
             .select('*, plan:investment_plans(*), user:users(*)')
             .eq('status', 'ACTIVE')
@@ -158,19 +164,23 @@ async function getActiveInvestments(week: Date) {
 }
 
 async function getTotalAUM() {
+    if (!supabaseServer) throw new Error('Supabase not configured')
+    const supabase = supabaseServer
     // Try PascalCase
-    const { data: d1, error: e1 } = await supabaseServer.from('Investment').select('principal').eq('status', 'ACTIVE')
+    const { data: d1, error: e1 } = await supabase.from('Investment').select('principal').eq('status', 'ACTIVE')
     if (!e1 && d1) return d1.reduce((sum: number, i: any) => sum + Number(i.principal), 0)
 
     // Try lowercase
     if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
-        const { data: d2 } = await supabaseServer.from('investments').select('principal').eq('status', 'ACTIVE')
+        const { data: d2 } = await supabase.from('investments').select('principal').eq('status', 'ACTIVE')
         if (d2) return d2.reduce((sum: number, i: any) => sum + Number(i.principal), 0)
     }
     return 0
 }
 
 export async function runBaselineCycle(input: BaselineInput) {
+  if (!supabaseServer) throw new Error('Supabase not configured')
+  const supabase = supabaseServer
   const week = toDate(input.weekEnding)
   const active = await getActiveInvestments(week)
   
@@ -200,9 +210,9 @@ export async function runBaselineCycle(input: BaselineInput) {
     // Create ProfitLog
     try {
         const plData = { investmentId: inv.id, amount: net, weekEnding: week.toISOString() }
-        const { error: plErr } = await supabaseServer.from('ProfitLog').insert(plData)
+        const { error: plErr } = await supabase.from('ProfitLog').insert(plData)
         if (plErr && (plErr.message.includes('relation') || plErr.code === '42P01')) {
-            await supabaseServer.from('profit_logs').insert({
+            await supabase.from('profit_logs').insert({
                 investment_id: plData.investmentId,
                 amount: plData.amount,
                 week_ending: plData.weekEnding
@@ -226,10 +236,10 @@ export async function runBaselineCycle(input: BaselineInput) {
         reference: JSON.stringify({ description: `ROI paid for investment (Week ending ${week.toISOString().split('T')[0]})` }),
         createdAt: new Date().toISOString()
     }
-    const { error: txErr } = await supabaseServer.from('Transaction').insert(txData)
+    const { error: txErr } = await supabase.from('Transaction').insert(txData)
     if (txErr) {
         if (txErr.message.includes('relation') || txErr.code === '42P01') {
-            await supabaseServer.from('transactions').insert({
+            await supabase.from('transactions').insert({
                 ...txData,
                 user_id: txData.userId,
                 investment_id: txData.investmentId,
@@ -242,19 +252,19 @@ export async function runBaselineCycle(input: BaselineInput) {
 
     // Update Wallet
     const currency = String(inv.user?.currency || 'USD')
-    const { data: w1, error: wErr1 } = await supabaseServer.from('Wallet').select('*').eq('userId', inv.userId).eq('currency', currency).maybeSingle()
+    const { data: w1, error: wErr1 } = await supabase.from('Wallet').select('*').eq('userId', inv.userId).eq('currency', currency).maybeSingle()
     
     let wallet = w1
     if (wErr1 && (wErr1.message.includes('relation') || wErr1.code === '42P01')) {
-         const { data: w2 } = await supabaseServer.from('wallets').select('*').eq('user_id', inv.userId).eq('currency', currency).maybeSingle()
+         const { data: w2 } = await supabase.from('wallets').select('*').eq('user_id', inv.userId).eq('currency', currency).maybeSingle()
          if (w2) wallet = { ...w2, id: w2.id, balance: w2.balance }
     }
     
     if (wallet) {
         const newBalance = Number(wallet.balance) + net
-        const { error: uErr } = await supabaseServer.from('Wallet').update({ balance: newBalance }).eq('id', wallet.id)
+        const { error: uErr } = await supabase.from('Wallet').update({ balance: newBalance }).eq('id', wallet.id)
         if (uErr && (uErr.message.includes('relation') || uErr.code === '42P01')) {
-             await supabaseServer.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
+             await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
         }
     }
 
@@ -262,10 +272,10 @@ export async function runBaselineCycle(input: BaselineInput) {
     try {
       const nData = { userId: inv.userId, type: 'profit', title: 'Weekly ROI', message: `Credited ${net.toFixed(2)}`, read: false, createdAt: new Date().toISOString() }
       let notif: any = null
-      const { data: n1, error: nErr1 } = await supabaseServer.from('Notification').insert(nData).select().single()
+      const { data: n1, error: nErr1 } = await supabase.from('Notification').insert(nData).select().single()
       
       if (nErr1 && (nErr1.message.includes('relation') || nErr1.code === '42P01')) {
-           const { data: n2 } = await supabaseServer.from('notifications').insert({
+           const { data: n2 } = await supabase.from('notifications').insert({
                ...nData,
                user_id: nData.userId,
                created_at: nData.createdAt
@@ -290,13 +300,15 @@ export async function runBaselineCycle(input: BaselineInput) {
 }
 
 export async function runStreamDistribution(input: StreamInput) {
+  if (!supabaseServer) throw new Error('Supabase not configured')
+  const supabase = supabaseServer
   const week = toDate(input.weekEnding)
-  let perf = input.performance || {}
+  const perf = input.performance || {}
   
   // If no performance provided, fetch latest from DB
   if (Object.keys(perf).length === 0) {
       // Try PascalCase
-      const { data: p1, error: e1 } = await supabaseServer
+      const { data: p1, error: e1 } = await supabase
           .from('Performance')
           .select('streamRois')
           .order('weekEnding', { ascending: false })
@@ -304,10 +316,11 @@ export async function runStreamDistribution(input: StreamInput) {
           .maybeSingle()
       
       if (!e1 && p1) {
-          perf = typeof p1.streamRois === 'string' ? JSON.parse(p1.streamRois) : p1.streamRois
+          // @ts-ignore
+          Object.assign(perf, typeof p1.streamRois === 'string' ? JSON.parse(p1.streamRois) : p1.streamRois)
       } else if (e1 && (e1.message.includes('relation') || e1.code === '42P01')) {
           // Try snake_case
-          const { data: p2 } = await supabaseServer
+          const { data: p2 } = await supabase
               .from('performance')
               .select('stream_rois')
               .order('week_ending', { ascending: false })
@@ -315,7 +328,8 @@ export async function runStreamDistribution(input: StreamInput) {
               .maybeSingle()
           
           if (p2) {
-              perf = typeof p2.stream_rois === 'string' ? JSON.parse(p2.stream_rois) : p2.stream_rois
+              // @ts-ignore
+              Object.assign(perf, typeof p2.stream_rois === 'string' ? JSON.parse(p2.stream_rois) : p2.stream_rois)
           }
       }
   }
@@ -386,11 +400,11 @@ export async function runStreamDistribution(input: StreamInput) {
         }
         
         // Try PascalCase insert
-        const { error: plErr } = await supabaseServer.from('ProfitLog').insert(plData)
+        const { error: plErr } = await supabase.from('ProfitLog').insert(plData)
         
         if (plErr && (plErr.message.includes('relation') || plErr.code === '42P01')) {
             // Fallback to snake_case
-             await supabaseServer.from('profit_logs').insert({
+             await supabase.from('profit_logs').insert({
                 investment_id: plData.investmentId,
                 amount: plData.amount,
                 week_ending: plData.weekEnding,
@@ -421,9 +435,9 @@ export async function runStreamDistribution(input: StreamInput) {
         }),
         createdAt: new Date().toISOString()
     }
-    const { error: txErr } = await supabaseServer.from('Transaction').insert(txData)
+    const { error: txErr } = await supabase.from('Transaction').insert(txData)
     if (txErr && (txErr.message.includes('relation') || txErr.code === '42P01')) {
-        await supabaseServer.from('transactions').insert({
+        await supabase.from('transactions').insert({
             ...txData,
             user_id: txData.userId,
             investment_id: txData.investmentId,
@@ -433,18 +447,18 @@ export async function runStreamDistribution(input: StreamInput) {
 
     // Wallet
     const currency = String(inv.user?.currency || 'USD')
-    const { data: w1, error: wErr1 } = await supabaseServer.from('Wallet').select('*').eq('userId', inv.userId).eq('currency', currency).maybeSingle()
+    const { data: w1, error: wErr1 } = await supabase.from('Wallet').select('*').eq('userId', inv.userId).eq('currency', currency).maybeSingle()
     let wallet = w1
     if (wErr1 && (wErr1.message.includes('relation') || wErr1.code === '42P01')) {
-         const { data: w2 } = await supabaseServer.from('wallets').select('*').eq('user_id', inv.userId).eq('currency', currency).maybeSingle()
+         const { data: w2 } = await supabase.from('wallets').select('*').eq('user_id', inv.userId).eq('currency', currency).maybeSingle()
          if (w2) wallet = { ...w2, id: w2.id, balance: w2.balance }
     }
     
     if (wallet) {
         const newBalance = Number(wallet.balance) + net
-        const { error: uErr } = await supabaseServer.from('Wallet').update({ balance: newBalance }).eq('id', wallet.id)
+        const { error: uErr } = await supabase.from('Wallet').update({ balance: newBalance }).eq('id', wallet.id)
         if (uErr && (uErr.message.includes('relation') || uErr.code === '42P01')) {
-             await supabaseServer.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
+             await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
         }
     }
 
@@ -452,9 +466,9 @@ export async function runStreamDistribution(input: StreamInput) {
     try {
       const nData = { userId: inv.userId, type: 'profit', title: 'Performance ROI', message: `Credited ${net.toFixed(2)}`, read: false, createdAt: new Date().toISOString() }
       let notif: any = null
-      const { data: n1, error: nErr1 } = await supabaseServer.from('Notification').insert(nData).select().single()
+      const { data: n1, error: nErr1 } = await supabase.from('Notification').insert(nData).select().single()
       if (nErr1 && (nErr1.message.includes('relation') || nErr1.code === '42P01')) {
-           const { data: n2 } = await supabaseServer.from('notifications').insert({
+           const { data: n2 } = await supabase.from('notifications').insert({
                ...nData,
                user_id: nData.userId,
                created_at: nData.createdAt
@@ -481,6 +495,8 @@ export async function runStreamDistribution(input: StreamInput) {
 }
 
 async function processReferral(inv: any, net: number, dryRun: boolean) {
+  if (!supabaseServer) return
+  const supabase = supabaseServer
   const referrerId = String(inv.user?.referrerId || '')
   if (!referrerId) return
   const slug = getSlug(inv.plan?.name || '')
@@ -493,27 +509,27 @@ async function processReferral(inv: any, net: number, dryRun: boolean) {
   let walletId = ''
   let walletBalance = 0
   
-  const { data: w1, error: wErr1 } = await supabaseServer.from('Wallet').select('*').eq('userId', referrerId).eq('currency', currency).maybeSingle()
+  const { data: w1, error: wErr1 } = await supabase.from('Wallet').select('*').eq('userId', referrerId).eq('currency', currency).maybeSingle()
   
   if (wErr1 && (wErr1.message.includes('relation') || wErr1.code === '42P01')) {
-      const { data: w2 } = await supabaseServer.from('wallets').select('*').eq('user_id', referrerId).eq('currency', currency).maybeSingle()
+      const { data: w2 } = await supabase.from('wallets').select('*').eq('user_id', referrerId).eq('currency', currency).maybeSingle()
       if (w2) {
           walletId = w2.id
           walletBalance = Number(w2.balance)
           // Update
-          await supabaseServer.from('wallets').update({ balance: walletBalance + bonus }).eq('id', walletId)
+          await supabase.from('wallets').update({ balance: walletBalance + bonus }).eq('id', walletId)
       } else {
           // Create
-          const { data: wNew } = await supabaseServer.from('wallets').insert({ user_id: referrerId, currency, balance: bonus }).select().single()
+          const { data: wNew } = await supabase.from('wallets').insert({ user_id: referrerId, currency, balance: bonus }).select().single()
           if (wNew) walletId = wNew.id
       }
   } else {
       if (w1) {
           walletId = w1.id
           walletBalance = Number(w1.balance)
-          await supabaseServer.from('Wallet').update({ balance: walletBalance + bonus }).eq('id', walletId)
+          await supabase.from('Wallet').update({ balance: walletBalance + bonus }).eq('id', walletId)
       } else {
-          const { data: wNew } = await supabaseServer.from('Wallet').insert({ userId: referrerId, currency, balance: bonus }).select().single()
+          const { data: wNew } = await supabase.from('Wallet').insert({ userId: referrerId, currency, balance: bonus }).select().single()
           if (wNew) walletId = wNew.id
       }
   }
@@ -529,9 +545,9 @@ async function processReferral(inv: any, net: number, dryRun: boolean) {
         reference: JSON.stringify({ sourceUserId: inv.userId, investmentId: inv.id, kind: 'referral_credit' }),
         createdAt: new Date().toISOString()
     }
-    const { error: txErr } = await supabaseServer.from('Transaction').insert(txData)
+    const { error: txErr } = await supabase.from('Transaction').insert(txData)
     if (txErr && (txErr.message.includes('relation') || txErr.code === '42P01')) {
-        await supabaseServer.from('transactions').insert({
+        await supabase.from('transactions').insert({
             ...txData,
             user_id: txData.userId,
             created_at: txData.createdAt
@@ -547,9 +563,9 @@ async function processReferral(inv: any, net: number, dryRun: boolean) {
         createdAt: new Date().toISOString()
     }
     let notif: any = null
-    const { data: n1, error: nErr1 } = await supabaseServer.from('Notification').insert(nData).select().single()
+    const { data: n1, error: nErr1 } = await supabase.from('Notification').insert(nData).select().single()
     if (nErr1 && (nErr1.message.includes('relation') || nErr1.code === '42P01')) {
-        const { data: n2 } = await supabaseServer.from('notifications').insert({
+        const { data: n2 } = await supabase.from('notifications').insert({
             ...nData,
             user_id: nData.userId,
             created_at: nData.createdAt

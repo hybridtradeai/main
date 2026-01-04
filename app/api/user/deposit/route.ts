@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -6,11 +8,17 @@ export async function POST(req: NextRequest) {
   console.log('=== DEPOSIT API CALLED ===');
   
   const { user, error } = await requireRole('USER', req)
-  if (error) {
+  if (error || !user) {
     console.log('Authentication error:', error);
-    return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+    return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
   }
   
+  if (!supabaseServer) {
+    console.error('Supabase server client not initialized');
+    return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  }
+  const supabase = supabaseServer
+
   console.log('User authenticated:', user?.id, user?.email);
   
   const body = await req.json().catch(() => ({}))
@@ -41,7 +49,7 @@ export async function POST(req: NextRequest) {
     
     // 1. Try to create transaction record
     try {
-      const { data, error } = await supabaseServer.from('Transaction').insert({
+      const { data, error } = await supabase.from('Transaction').insert({
           userId: String(user.id),
           type: 'DEPOSIT',
           amount,
@@ -120,7 +128,7 @@ export async function POST(req: NextRequest) {
         if (txn) {
             try {
                 const meta = txn.reference ? JSON.parse(txn.reference) : {}
-                await supabaseServer.from('Transaction').update({
+                await supabase.from('Transaction').update({
                     status: 'FAILED',
                     reference: JSON.stringify({ ...meta, error: paymentJson })
                 }).eq('id', orderId)
@@ -157,7 +165,7 @@ export async function POST(req: NextRequest) {
                 nowpaymentsResponse: paymentJson 
             }
 
-            await supabaseServer.from('Transaction').update({
+            await supabase.from('Transaction').update({
                 reference: JSON.stringify(updateRef)
             }).eq('id', orderId)
           } catch (e) {
@@ -218,7 +226,7 @@ export async function POST(req: NextRequest) {
   const authorizationUrl = String(json?.data?.authorization_url || '')
 
   try {
-    const { error } = await supabaseServer.from('Transaction').insert({
+    const { error } = await supabase.from('Transaction').insert({
         userId: String(user.id),
         type: 'DEPOSIT',
         amount,

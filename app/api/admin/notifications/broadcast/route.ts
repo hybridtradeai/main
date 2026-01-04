@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -8,7 +10,7 @@ import crypto from 'crypto'
 
 export async function POST(req: NextRequest) {
   const { user, error } = await requireRole('ADMIN')
-  if (error) return new Response(JSON.stringify({ error }), { status: error === 'unauthenticated' ? 401 : 403 })
+  if (error || !user) return new Response(JSON.stringify({ error: error || 'unauthenticated' }), { status: error === 'unauthenticated' ? 401 : 403 })
   const allowed = await adminRateLimit.allow(String(user.id))
   if (!allowed) return new Response(JSON.stringify({ error: 'rate_limited' }), { status: 429 })
   const body = await req.json()
@@ -16,6 +18,8 @@ export async function POST(req: NextRequest) {
   const title = String(body?.title || '')
   const message = String(body?.message || '')
   if (!title || !message) return new Response(JSON.stringify({ error: 'invalid' }), { status: 400 })
+
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
 
   const id = crypto.randomUUID()
   const now = new Date().toISOString()

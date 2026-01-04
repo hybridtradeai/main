@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { requireRole } from '@lib/requireRole'
 import { broadcastQueue } from '@lib/queue/broadcastQueue'
@@ -15,10 +17,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const logsKey = `job_logs:broadcast:${job.id}`
   let logs: any[] = []
   try {
-    const entries = await redis.lrange(logsKey, 0, 100)
-    logs = entries.map((e: string) => {
-      try { return JSON.parse(e) } catch { return { raw: e } }
-    })
+    if (redis) {
+      const entries = await redis.lrange(logsKey, 0, 100)
+      logs = entries.map((e: string) => {
+        try { return JSON.parse(e) } catch { return { raw: e } }
+      })
+    }
   } catch {}
   const payload = {
     id: job.id,

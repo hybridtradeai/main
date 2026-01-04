@@ -22,6 +22,8 @@ export async function requireRole(role: 'USER' | 'ADMIN', req?: NextRequest) {
   
   if (!token) return { user: null, error: 'unauthenticated' }
   
+  if (!supabaseServer) return { user: null, error: 'server_configuration_error' }
+
   const { data: { user }, error: userErr } = await supabaseServer.auth.getUser(token)
   
   if (userErr || !user) return { user: null, error: 'unauthenticated' }

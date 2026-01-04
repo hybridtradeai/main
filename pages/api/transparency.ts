@@ -18,6 +18,9 @@ const rates: Record<string, number> = {
 }
 
 export default async function handler(_req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   try {
     let currencyBreakdown: { currency: string; total: number }[] = []
     let aumUSD = 0
@@ -26,7 +29,7 @@ export default async function handler(_req: NextApiRequest, res: NextApiResponse
 
     if (supabaseServiceReady) {
       try {
-        const { data: wData } = await supabaseServer
+        const { data: wData } = await supabase
           .from('Wallet')
           .select('currency,balance')
         const items = Array.isArray(wData) ? wData : []
@@ -40,7 +43,7 @@ export default async function handler(_req: NextApiRequest, res: NextApiResponse
       } catch {}
 
       try {
-        const { data: inv } = await supabaseServer
+        const { data: inv } = await supabase
           .from('Investment')
           .select('amount,status')
           .eq('status', 'ACTIVE')
@@ -49,7 +52,7 @@ export default async function handler(_req: NextApiRequest, res: NextApiResponse
       } catch {}
 
       try {
-        const { data: rb } = await supabaseServer
+        const { data: rb } = await supabase
           .from('ReserveBuffer')
           .select('currentAmount,totalAUM,updatedAt')
           .limit(1)

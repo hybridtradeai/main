@@ -7,12 +7,15 @@ function clamp(n: number, min: number, max: number) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabaseServer) return res.status(500).json({ error: 'server_configuration_error' })
+  const supabase = supabaseServer
+
   try {
     const since1h = new Date(Date.now() - 3600_000).toISOString()
 
     let recentTx: any[] = []
     try {
-      const { data } = await supabaseServer
+      const { data } = await supabase
         .from('Transaction')
         .select('userId,type,amount,createdAt')
         .gte('createdAt', since1h)
@@ -24,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let baseCount = 0
     try {
       if (activeUserIds.length) {
-        const { data } = await supabaseServer
+        const { data } = await supabase
           .from('Investment')
           .select('userId,status')
           .in('userId', activeUserIds)

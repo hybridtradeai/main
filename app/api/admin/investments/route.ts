@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
   const userId = url.searchParams.get('userId')
   const take = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') ?? '50')))
 
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+
   // Try PascalCase
   let q = supabaseServer.from('Investment').select('*').order('createdAt', { ascending: false }).limit(take)
   if (status) q = q.eq('status', status)
@@ -58,6 +60,8 @@ export async function PATCH(req: NextRequest) {
   const id = String(body?.id || '')
   const action = String(body?.action || '')
   if (!id || !action) return new Response(JSON.stringify({ error: 'invalid' }), { status: 400 })
+
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
 
   if (action === 'approve') {
     let inv: any = null;

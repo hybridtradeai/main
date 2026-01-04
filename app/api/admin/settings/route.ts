@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest } from 'next/server'
 import { supabaseServer } from '@lib/supabaseServer'
 import { requireRole } from '@lib/requireRole'
@@ -23,14 +25,17 @@ export async function POST(req: NextRequest) {
   const key = String(body?.key || '')
   const value = String(body?.value ?? '')
   if (!key) return new Response(JSON.stringify({ error: 'invalid_key' }), { status: 400 })
+
+  if (!supabaseServer) return new Response(JSON.stringify({ error: 'server_configuration_error' }), { status: 500 })
+  const supabase = supabaseServer
   
   // Try PascalCase Setting table first
-  const { error: upsertError } = await supabaseServer.from('Setting').upsert({ key, value })
+  const { error: upsertError } = await supabase.from('Setting').upsert({ key, value })
   
   if (upsertError) {
       // Fallback to lowercase
       if (upsertError.message.includes('relation "public.Setting" does not exist') || upsertError.code === '42P01') {
-          const { error: err2 } = await supabaseServer.from('settings').upsert({ key, value })
+          const { error: err2 } = await supabase.from('settings').upsert({ key, value })
           if (err2) {
               return new Response(JSON.stringify({ error: 'Settings table missing in database', details: err2 }), { status: 503 })
           }
