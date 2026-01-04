@@ -40,14 +40,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let last = 0
     try {
-      const raw = await redis.get('presence:simulated:last')
+      const raw = redis ? await redis.get('presence:simulated:last') : null
       last = Number(raw || 0) || 0
     } catch {}
 
     const drift = Math.round((Math.random() - 0.5) * 4)
     const approx = clamp(baseCount + drift, 0, baseCount + 7)
     try {
-      await redis.set('presence:simulated:last', String(approx))
+      if (redis) await redis.set('presence:simulated:last', String(approx))
     } catch {}
 
     return res.status(200).json({

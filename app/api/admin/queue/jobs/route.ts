@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') || '20')))
   const jobs = await broadcastQueue.getJobs([status], offset, limit)
   const items = await Promise.all(
-    jobs.map(async (job) => ({
+    jobs.map(async (job: any) => ({
       id: job.id,
       name: job.name,
       data: job.data,

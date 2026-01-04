@@ -43,8 +43,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         message: cfg.userMessage,
         hideMerkleSection: cfg.hideMerkleSection === true,
       }
-      await redis.lpush('por:audit', JSON.stringify(audit))
-      await redis.ltrim('por:audit', 0, 499)
+      if (redis) {
+        await redis.lpush('por:audit', JSON.stringify(audit))
+        await redis.ltrim('por:audit', 0, 499)
+      }
       try {
         // Try PascalCase first
         const { error: e1 } = await supabase
