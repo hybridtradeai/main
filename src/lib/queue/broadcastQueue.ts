@@ -1,9 +1,5 @@
 import { Queue } from 'bullmq'
 
-if (process.env.VERCEL_ENV === "production" && process.env.NEXT_PHASE === "phase-production-build") {
-  throw new Error("Skipping API execution during build");
-}
-
 const connection = { url: process.env.REDIS_URL || 'redis://localhost:6379' }
 
 let q: Queue | null = null

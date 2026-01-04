@@ -1,9 +1,5 @@
 import type { Redis as RedisType } from 'ioredis'
 
-if (process.env.VERCEL_ENV === "production" && process.env.NEXT_PHASE === "phase-production-build") {
-  throw new Error("Skipping API execution during build");
-}
-
 // OPTION A: TEMPORARILY DISABLE REDIS ON VERCEL
 // We assume if VERCEL env var is present, we are in build or production on Vercel.
 // We also allow explicit disabling via DISABLE_REDIS.
