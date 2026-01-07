@@ -1,10 +1,19 @@
 export const dynamic = "force-dynamic";
 
+import HeroSection from '@/components/landing/HeroSection'
+import FeaturesSection from '@/components/landing/FeaturesSection'
+import StatsSection from '@/components/landing/StatsSection'
+import LiveDemoSection from '@/components/landing/LiveDemoSection'
+import CTASection from '@/components/landing/CTASection'
+
 export default function Home() {
   return (
-    <main style={{ minHeight: "100vh", background: "#0b1020", color: "white", padding: "40px" }}>
-      <h1>HybridTradeAI</h1>
-      <p>Deployment successful. (Dynamic)</p>
+    <main className="min-h-screen bg-[#050A18] text-white overflow-x-hidden">
+      <HeroSection />
+      <StatsSection />
+      <FeaturesSection />
+      <LiveDemoSection />
+      <CTASection />
     </main>
   );
 }
