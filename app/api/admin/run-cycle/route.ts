@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const result = await runProfitDistributionCycle();
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error('Profit distribution failed:', error);
+    console.error('Cycle run failed:', error);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }

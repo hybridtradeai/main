@@ -31,7 +31,8 @@ if (!DISABLE_REDIS) {
     
     if (client) {
       client.on('error', (err: any) => {
-        // Suppress errors to prevent crash
+        // Log error but prevent crash
+        console.error('[Redis Error]', err.message);
       })
     }
   } catch (e) {
